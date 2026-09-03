@@ -57,6 +57,19 @@ export default defineConfig({
     // Tunnel. Der Server laeuft nur beim Entwickeln.
     allowedHosts: true,
   },
+  /**
+   * Wann dieser Stand gebaut wurde. Steht im Messprotokoll und beantwortet die
+   * Frage, die sonst jedes Mal aufkommt: läuft am Telefon schon das Neue oder
+   * noch das Alte aus dem Zwischenspeicher?
+   */
+  define: {
+    __BAUZEIT__: JSON.stringify(
+      new Date().toLocaleString('de-DE', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+      }),
+    ),
+  },
   preview: { host: true, port: 4173, allowedHosts: true },
   build: { target: 'es2022' },
 });

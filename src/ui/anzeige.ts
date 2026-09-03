@@ -16,6 +16,8 @@ export interface AnzeigeZustand {
   /** Ausgewertete Bilder je Sekunde. */
   messrate: number;
   belichtung: string;
+  /** Wann der laufende Stand gebaut wurde. */
+  stand: string;
   /** Was das Verfahren selbst meldet. Wechselt mit dem Modus. */
   detail: Readonly<Record<string, number>>;
 }
@@ -86,6 +88,7 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
   const messrateFeld = frag<HTMLElement>(wurzel, '#rand-messrate');
   const belichtungFeld = frag<HTMLElement>(wurzel, '#rand-belichtung');
   const helligkeitFeld = frag<HTMLElement>(wurzel, '#rand-helligkeit');
+  const standFeld = frag<HTMLElement>(wurzel, '#rand-stand');
   const detailListe = frag<HTMLElement>(wurzel, '#rand-detail');
 
   let letzteDetailForm = '';
@@ -123,6 +126,7 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
       konfidenzFeld.textContent = `${Math.round(z.konfidenz * 100)} %`;
       messrateFeld.textContent = z.messrate > 0 ? zahl(z.messrate, 0) : '—';
       belichtungFeld.textContent = z.belichtung;
+      standFeld.textContent = z.stand;
       // Ein Prozentwert der vollen Aussteuerung ist greifbarer als 0..255.
       helligkeitFeld.textContent = `${zahl((z.helligkeit / 255) * 100, 0)} %`;
 

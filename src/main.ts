@@ -52,11 +52,31 @@ let laeuft = false;
 let startetGerade = false;
 let zeigeKanten = false;
 
-/** 'pendelt' → 'gesperrt' oder 'Automatik', siehe camera/belichtung.ts. */
+/**
+ * Zustand der Belichtung.
+ *
+ *   pendelt  → die Automatik regelt noch, es wird nicht gemessen
+ *   sperrt   → Sperrbefehl unterwegs
+ *   prueft   → gesperrt, aber noch unter Beobachtung
+ *   fertig   → gesperrt und für gut befunden, oder Automatik
+ *
+ * Die Prüfphase gibt es, weil applyConstraints Erfolg meldet, auch wenn der
+ * Treiber etwas anderes tut. Auf dem Testgerät wurde das Bild im Moment der
+ * Sperre schlagartig dunkel. Fällt die Helligkeit ab, wird die Sperre wieder
+ * aufgehoben -- ein nachregelndes Bild ist unangenehm, ein schwarzes unbrauchbar.
+ */
+type Belichtungszustand = 'pendelt' | 'sperrt' | 'prueft' | 'fertig';
+let belichtungszustand: Belichtungszustand = 'pendelt';
 let belichtungstext = 'pendelt sich ein';
-let sperreLaeuft = false;
-let gesperrt = false;
+let helligkeitVorSperre = 0;
+let pruefungBis = 0;
+let nichtMehrSperren = false;
 let zuDunkel = false;
+
+/** Ab welchem Helligkeitsverlust die Sperre als misslungen gilt. */
+const SPERRE_VERLUSTGRENZE = 0.65;
+/** Wie lange nach der Sperre auf einen Einbruch gewartet wird, in Millisekunden. */
+const SPERRE_PRUEFDAUER = 1500;
 
 /**
  * Gleitender Mittelwert der Messrate. Gezählt werden ausgewertete Bilder, nicht
@@ -122,9 +142,11 @@ async function starteWirklich(): Promise<void> {
   glaetter.reset();
   stabilitaet.reset();
   belichtung.reset();
+  belichtungszustand = 'pendelt';
   belichtungstext = 'pendelt sich ein';
-  sperreLaeuft = false;
-  gesperrt = false;
+  helligkeitVorSperre = 0;
+  pruefungBis = 0;
+  nichtMehrSperren = false;
   zuDunkel = false;
   letztesErgebnis = null;
   letzteMessung = 0;
@@ -170,14 +192,7 @@ function schleife(jetzt: number): void {
     const licht = belichtung.beobachte(neuestes.gray, neuestes.timestamp);
     zuDunkel = licht.zuDunkel;
 
-    // Erst wenn das Bild steht, wird die Belichtung festgehalten. Genau einmal.
-    if (licht.eingependelt && !gesperrt && !sperreLaeuft && kamera) {
-      sperreLaeuft = true;
-      void kamera.lockExposure().then((erfolg) => {
-        gesperrt = true;
-        belichtungstext = erfolg.exposure ? 'gesperrt' : 'Automatik';
-      });
-    }
+    belichtungPflegen(licht.eingependelt, licht.helligkeit, neuestes.timestamp);
 
     const ergebnis = metrik.run(neuestes);
     const konfidenz = metrik.confidence(ergebnis);
@@ -217,6 +232,7 @@ function schleife(jetzt: number): void {
       helligkeit: licht.helligkeit,
       messrate,
       belichtung: belichtungstext,
+      stand: __BAUZEIT__,
     });
   }
 
@@ -232,6 +248,61 @@ function wertText(ergebnis: Result): string {
     ergebnis.label ??
     ergebnis.value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   );
+}
+
+/**
+ * Sperrt die Belichtung, sobald das Bild steht -- und nimmt die Sperre zurück,
+ * wenn das Bild dadurch dunkel geworden ist.
+ */
+function belichtungPflegen(eingependelt: boolean, helligkeit: number, jetzt: number): void {
+  if (!kamera) return;
+
+  if (belichtungszustand === 'pendelt') {
+    if (!eingependelt) return;
+    if (nichtMehrSperren) {
+      belichtungszustand = 'fertig';
+      return;
+    }
+    belichtungszustand = 'sperrt';
+    helligkeitVorSperre = helligkeit;
+    const beim = kamera;
+    void beim.lockExposure().then((erfolg) => {
+      if (kamera !== beim) return;
+      if (!erfolg.exposure) {
+        belichtungszustand = 'fertig';
+        belichtungstext = 'Automatik';
+        return;
+      }
+      belichtungszustand = 'prueft';
+      belichtungstext = 'gesperrt, wird geprüft';
+      pruefungBis = jetzt + SPERRE_PRUEFDAUER;
+    });
+    return;
+  }
+
+  if (belichtungszustand === 'prueft') {
+    const eingebrochen =
+      helligkeitVorSperre > 0 && helligkeit < helligkeitVorSperre * SPERRE_VERLUSTGRENZE;
+    if (eingebrochen) {
+      // Der Treiber ist beim Umschalten nicht stehengeblieben. Zurück zur
+      // Automatik und nicht noch einmal versuchen.
+      nichtMehrSperren = true;
+      belichtungszustand = 'pendelt';
+      belichtungstext = 'Automatik – Sperre verworfen';
+      const beim = kamera;
+      void beim.unlockExposure();
+      // Das Bild ändert sich jetzt wieder; der bisherige Verlauf gehört zu
+      // einer Belichtung, die es nicht mehr gibt.
+      belichtung.reset();
+      glaetter.reset();
+      stabilitaet.reset();
+      return;
+    }
+    if (jetzt >= pruefungBis) {
+      belichtungszustand = 'fertig';
+      belichtungstext = 'gesperrt';
+    }
+  }
 }
 
 function hinweisText(

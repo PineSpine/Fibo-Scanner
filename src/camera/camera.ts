@@ -19,14 +19,32 @@ export interface CameraHandle {
    * Kantenbild wandert mit der Helligkeit statt mit dem Motiv.
    */
   lockExposure(): Promise<{ exposure: boolean; whiteBalance: boolean }>;
+  /**
+   * Nimmt die Sperre zurueck. Noetig, weil manche Treiber beim Umschalten auf
+   * manuell nicht stehenbleiben, sondern auf einen Standardwert springen -- das
+   * Bild wird dann schlagartig dunkel. Der Aufrufer prueft die Helligkeit und
+   * macht es rueckgaengig.
+   */
+  unlockExposure(): Promise<void>;
   stop(): void;
 }
 
-/** Nicht standardisierte, aber in Chrome auf Android vorhandene Einstellungen. */
+/**
+ * Nicht standardisierte, aber in Chrome auf Android vorhandene Einstellungen
+ * aus der Image-Capture-Erweiterung. TypeScript kennt sie nicht, deshalb hier
+ * nur das, was tatsaechlich benutzt wird.
+ */
 interface PhotoConstraints {
   exposureMode?: string;
   whiteBalanceMode?: string;
+  exposureTime?: number;
+  iso?: number;
+  exposureCompensation?: number;
+  colorTemperature?: number;
 }
+
+/** Dieselben Felder, wie getSettings() sie zurueckgibt. */
+type PhotoSettings = MediaTrackSettings & PhotoConstraints;
 
 /**
  * Wartet, bis das Videoelement seine Bildgroesse kennt -- vorher laesst sich
@@ -125,30 +143,67 @@ export async function startCamera(video: HTMLVideoElement): Promise<CameraHandle
     stream,
     settings: track.getSettings(),
 
+    /**
+     * Haelt die aktuelle Belichtung fest.
+     *
+     * Entscheidend ist, die laufenden Werte mitzugeben. `exposureMode: manual`
+     * allein sagt dem Treiber nur "hoer auf zu regeln", nicht "bleib hier
+     * stehen" -- und mancher Treiber springt dann auf einen Standardwert. Auf
+     * dem Testgeraet wurde das Bild dadurch im Moment der Sperre schlagartig
+     * dunkel, obwohl es vorher richtig belichtet war.
+     *
+     * Ob es geklappt hat, laesst sich hier nicht feststellen: applyConstraints
+     * meldet Erfolg, auch wenn der Treiber etwas anderes tut. Deshalb prueft
+     * der Aufrufer hinterher die Helligkeit und nimmt die Sperre notfalls
+     * zurueck.
+     */
     async lockExposure() {
       const result = { exposure: false, whiteBalance: false };
-      const supported = track.getCapabilities?.() as PhotoConstraints | undefined;
+      const jetzt = track.getSettings() as PhotoSettings;
 
-      if (supported?.exposureMode !== undefined || supported === undefined) {
-        try {
-          await track.applyConstraints({
-            advanced: [{ exposureMode: 'manual' } as PhotoConstraints],
-          } as MediaTrackConstraints);
-          result.exposure = true;
-        } catch {
-          // Die meisten Desktop-Kameras koennen das nicht. Kein Grund zum Abbruch,
-          // die Anzeige weist dann auf die laufende Automatik hin.
-        }
+      const belichtung: PhotoConstraints = { exposureMode: 'manual' };
+      if (typeof jetzt.exposureTime === 'number') belichtung.exposureTime = jetzt.exposureTime;
+      if (typeof jetzt.iso === 'number') belichtung.iso = jetzt.iso;
+      if (typeof jetzt.exposureCompensation === 'number') {
+        belichtung.exposureCompensation = jetzt.exposureCompensation;
       }
+
       try {
         await track.applyConstraints({
-          advanced: [{ whiteBalanceMode: 'manual' } as PhotoConstraints],
+          advanced: [belichtung],
         } as MediaTrackConstraints);
+        result.exposure = true;
+      } catch {
+        // Die meisten Kameras am Rechner koennen das nicht. Kein Grund zum
+        // Abbruch, die Anzeige weist dann auf die laufende Automatik hin.
+      }
+
+      const weiss: PhotoConstraints = { whiteBalanceMode: 'manual' };
+      if (typeof jetzt.colorTemperature === 'number') {
+        weiss.colorTemperature = jetzt.colorTemperature;
+      }
+      try {
+        await track.applyConstraints({ advanced: [weiss] } as MediaTrackConstraints);
         result.whiteBalance = true;
       } catch {
         // dito
       }
       return result;
+    },
+
+    /** Gibt die Regelung wieder frei, wenn die Sperre das Bild verdorben hat. */
+    async unlockExposure() {
+      for (const modus of [
+        { exposureMode: 'continuous' } as PhotoConstraints,
+        { whiteBalanceMode: 'continuous' } as PhotoConstraints,
+      ]) {
+        try {
+          await track.applyConstraints({ advanced: [modus] } as MediaTrackConstraints);
+        } catch {
+          // Wenn schon das Sperren nicht ging, geht das Entsperren erst recht
+          // nicht -- dann lief die Automatik ohnehin durch.
+        }
+      }
     },
 
     stop() {

@@ -3,21 +3,33 @@
  * beim ersten Aufruf legt er alles ab, was die Seite lädt, und bedient danach
  * jede weitere Anfrage aus dem eigenen Speicher.
  *
- * Bewusst kein Vorabladen einer Dateiliste: die Namen tragen nach dem Bauen
- * einen Hash, und eine falsch gepflegte Liste ist schlimmer als gar keine.
- * Stattdessen füllt sich der Speicher beim ersten Besuch von selbst -- die
- * Startseite lädt ohnehin alles, was die App braucht.
+ * Zwei verschiedene Regeln, weil zwei verschiedene Dinge ausgeliefert werden:
+ *
+ *   Das Dokument   → erst das Netz, nach kurzer Frist der Speicher.
+ *   Alles andere   → erst der Speicher, sonst das Netz.
+ *
+ * Der Unterschied ist wichtig. Die Dateinamen der Bündel tragen einen Hash,
+ * sie ändern sich also nie unter demselben Namen -- der Speicher ist für sie
+ * immer richtig. Das Dokument dagegen heißt immer gleich und zeigt nach einer
+ * Veröffentlichung auf neue Bündel. Wer es aus dem Speicher ausliefert, zeigt
+ * beim ersten Start nach jeder Veröffentlichung noch den alten Stand. Genau das
+ * ist passiert: der Umschalter für das zweite Verfahren war ausgeliefert, aber
+ * am Telefon nicht zu sehen.
+ *
+ * Die Frist von zweieinhalb Sekunden ist der Preis dafür. Sie fällt nur an,
+ * wenn gar kein Netz da ist, und nur beim Start -- danach kommt alles aus dem
+ * Speicher. Im Funkloch startet die App also mit einer kurzen Verzögerung
+ * statt gar nicht.
  *
  * Achtung: Ein Dienstarbeiter läuft nur auf einem Ursprung, dessen Zertifikat
  * der Browser anerkennt. Über ein selbst ausgestelltes Zertifikat im WLAN
  * verweigert Chrome die Anmeldung -- dort gibt es also weder Offlinebetrieb
- * noch Installation. Dafür braucht es echtes Hosting.
+ * noch Installation.
  */
-const CACHE = 'fibo-v1';
+const CACHE = 'fibo-v2';
+const NETZFRIST = 2500;
 
 self.addEventListener('install', () => {
-  // Kein Vorabladen, also nichts zu tun -- aber gleich übernehmen, damit der
-  // erste Besuch schon vom Speicher profitiert.
   void self.skipWaiting();
 });
 
@@ -41,37 +53,57 @@ function schluessel(anfrage) {
   return anfrage.mode === 'navigate' ? new Request(self.registration.scope) : anfrage;
 }
 
+/** Netz mit Frist. Kommt nichts, entscheidet der Aufrufer. */
+function ausDemNetz(anfrage, frist) {
+  if (frist === undefined) return fetch(anfrage).catch(() => undefined);
+  return new Promise((fertig) => {
+    let erledigt = false;
+    const gib = (antwort) => {
+      if (erledigt) return;
+      erledigt = true;
+      fertig(antwort);
+    };
+    setTimeout(() => gib(undefined), frist);
+    fetch(anfrage).then(gib, () => gib(undefined));
+  });
+}
+
 self.addEventListener('fetch', (event) => {
   const anfrage = event.request;
   if (anfrage.method !== 'GET') return;
   if (new URL(anfrage.url).origin !== self.location.origin) return;
 
+  const istDokument = anfrage.mode === 'navigate';
+
   event.respondWith(
     (async () => {
       const speicher = await caches.open(CACHE);
       const key = schluessel(anfrage);
-      const treffer = await speicher.match(key);
 
-      const ausDemNetz = fetch(anfrage)
-        .then(async (antwort) => {
-          // Nur vollständige Antworten ablegen. Eine 404 oder ein
-          // Teilstück (206) im Speicher wäre schlimmer als kein Eintrag.
-          if (antwort.ok && antwort.status === 200) {
-            await speicher.put(key, antwort.clone());
-          }
-          return antwort;
-        })
-        .catch(() => undefined);
+      const ablegen = async (antwort) => {
+        // Nur vollständige Antworten ablegen. Eine 404 oder ein Teilstück (206)
+        // im Speicher wäre schlimmer als kein Eintrag.
+        if (antwort && antwort.ok && antwort.status === 200) {
+          await speicher.put(key, antwort.clone());
+        }
+        return antwort;
+      };
 
-      if (treffer) {
-        // Aus dem Speicher antworten, im Hintergrund erneuern. Im Wald ohne
-        // Empfang startet die App dadurch sofort, statt in einen Zeitablauf
-        // zu laufen.
-        event.waitUntil(ausDemNetz);
-        return treffer;
+      if (istDokument) {
+        const frisch = await ausDemNetz(anfrage, NETZFRIST);
+        if (frisch && frisch.ok) {
+          event.waitUntil(ablegen(frisch.clone()));
+          return frisch;
+        }
+        const alt = await speicher.match(key);
+        return alt ?? frisch ?? Response.error();
       }
 
-      return (await ausDemNetz) ?? Response.error();
+      const treffer = await speicher.match(key);
+      if (treffer) return treffer;
+      const antwort = await ausDemNetz(anfrage);
+      if (antwort) await ablegen(antwort);
+      return antwort ?? Response.error();
     })(),
   );
 });
