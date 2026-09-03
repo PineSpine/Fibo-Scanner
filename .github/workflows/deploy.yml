@@ -40,11 +40,16 @@ jobs:
           # Eine Projektseite liegt unter /<repo>/, eine Nutzer- oder
           # Organisationsseite (<name>.github.io) unter /. Ohne den richtigen
           # Basispfad sucht die Seite ihre Schriften an der falschen Stelle.
-          if [[ "${{ github.event.repository.name }}" == *.github.io ]]; then
+          #
+          # GITHUB_REPOSITORY statt github.event.repository.name: die Variable
+          # steht bei jeder Auslösung bereit, das Ereignisobjekt nicht.
+          repo="${GITHUB_REPOSITORY#*/}"
+          if [[ "$repo" == *.github.io ]]; then
             echo "FIBO_BASE=/" >> "$GITHUB_ENV"
           else
-            echo "FIBO_BASE=/${{ github.event.repository.name }}/" >> "$GITHUB_ENV"
+            echo "FIBO_BASE=/$repo/" >> "$GITHUB_ENV"
           fi
+          echo "Basispfad: ${FIBO_BASE:-/$repo/}"
 
       - name: Bauen
         run: npm run build

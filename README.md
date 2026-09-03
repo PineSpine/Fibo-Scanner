@@ -66,26 +66,49 @@ dieses Irgendwo muss ein Zertifikat haben, das der Browser anerkennt:
   selbst ausgestelltem Zertifikat. **Ohne echtes Hosting also kein
   Offlinebetrieb und keine Installation.**
 
-Also:
+Gewählter Weg: **GitHub Pages**, veröffentlicht durch
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml). Der Workflow
+läuft bei jedem Push auf `main`, führt erst die Tests aus — eine Änderung an
+`metrics/`, die die Referenzbilder verfehlt, soll gar nicht erst auf dem Telefon
+landen —, setzt den Basispfad selbst und lädt `dist/` hoch.
 
-```bash
-npm run build
-```
+Einmalig einzurichten:
 
-Danach den Inhalt von `dist/` auf ein beliebiges statisches Hosting legen —
-Netlify, Cloudflare Pages, Vercel, GitHub Pages. Kein Server, keine Datenbank,
-kein Bauvorgang beim Anbieter nötig; es sind sieben Dateien.
+1. Auf GitHub ein leeres Repository anlegen, **ohne** README, `.gitignore` oder
+   Lizenz — die liegen hier schon.
+2. Verknüpfen und hochladen:
 
-Liegt die App **nicht** unter der Wurzel der Domain, sondern in einem
-Unterverzeichnis (so macht es GitHub Pages), muss das beim Bauen bekannt sein:
+   ```bash
+   git remote add origin https://github.com/<konto>/<repo>.git
+   git push -u origin main
+   ```
+
+3. Im Repository unter *Settings → Pages* bei *Source* **GitHub Actions**
+   auswählen. Nicht *Deploy from a branch* — der Workflow liefert das Ergebnis
+   direkt ab, es gibt keinen `gh-pages`-Zweig.
+4. Unter *Actions* zusehen. Nach etwa einer Minute steht die Adresse
+   `https://<konto>.github.io/<repo>/` im Schritt *veroeffentlichen*.
+
+Ab dann veröffentlicht jeder Push von selbst.
+
+**Der Basispfad regelt sich allein.** Eine Projektseite liegt unter `/<repo>/`,
+eine Nutzerseite (`<konto>.github.io`) unter `/`; der Workflow erkennt beides und
+setzt `FIBO_BASE`. Nur wer von Hand für ein Unterverzeichnis baut, muss es selbst
+angeben:
 
 ```powershell
 $env:FIBO_BASE = '/fibo-scanner/'; npm run build
 ```
 
 Sonst sucht die Seite ihre Schriften an der falschen Stelle. In Git Bash bitte
-`MSYS_NO_PATHCONV=1` davorsetzen, sonst verbiegt die Shell den Pfad in
-einen Windows-Pfad unterhalb des Git-Verzeichnisses.
+`MSYS_NO_PATHCONV=1` davorsetzen, sonst verbiegt die Shell den Pfad in einen
+Windows-Pfad unterhalb des Git-Verzeichnisses.
+
+**Zum Repository selbst:** GitHub Pages braucht auf einem kostenlosen Konto ein
+öffentliches Repository. Deshalb steht `docs/moodboard/` in der `.gitignore` —
+die Pins stammen von anderen Leuten, und aus der Git-Historie bekommt man sie
+nicht ohne Weiteres wieder heraus. Der lokale Ordner bleibt unberührt. Wird das
+Repository privat, genügt es, die Zeile zu löschen.
 
 Am Telefon dann einmal aufrufen und über das Browsermenü **Zum Startbildschirm
 hinzufügen**. Von da an:
@@ -292,10 +315,13 @@ Verbindung zu Google entsteht.
 
 ## Was als Nächstes ansteht
 
-1. **M1 im Wald abnehmen.** Telefon, Farn, zehn Sekunden ruhig halten, auf die
+1. **Veröffentlichen und installieren.** Repository anlegen, pushen, Pages auf
+   *GitHub Actions* stellen, am Telefon zum Startbildschirm hinzufügen. Erst
+   dann ist die App im Wald verfügbar.
+2. **M1 im Wald abnehmen.** Telefon, Farn, zehn Sekunden ruhig halten, auf die
    Schwankungsanzeige sehen. Erst wenn die steht, lohnt M2.
-2. Fällt die Schwankung nicht unter 0,05, sind die Verdächtigen in dieser
+3. Fällt die Schwankung nicht unter 0,05, sind die Verdächtigen in dieser
    Reihenfolge: nachregelnder Autofokus (die Belichtung ist bereits gesperrt,
    der Fokus nicht), Bewegungsunschärfe bei wenig Licht, und die Empfindlichkeit
    des Otsu-Schnitts bei kontrastarmen Motiven.
-3. Über die Platzierung der Skizze entscheiden.
+4. Über die Platzierung der Skizze entscheiden.
