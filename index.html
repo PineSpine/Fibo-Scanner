@@ -18,34 +18,32 @@
           <p class="kicker">Feldbuch für Muster</p>
           <h1 class="titel">Fibo-Scanner</h1>
           <hr class="linie" />
-          <p class="unterzeile">Fraktale Dimension, gemessen mit der Handykamera</p>
-        </div>
-
-        <div class="prosa">
-          <p>
-            Halte die Kamera auf einen Farn, eine Baumkrone, eine Hauswand. Die App legt ein
-            Gitter über die Kanten des Bildes und zählt, wie sich die Zahl der belegten
-            Kästchen ändert, wenn das Gitter feiner wird. Daraus ergibt sich eine Zahl
-            zwischen 1 und 2: wie stark die Struktur die Fläche ausfüllt.
-          </p>
-          <p class="zurueckhaltung">
-            Das ist eine Tendenz des Ausschnitts, kein Beweis über die Pflanze. Wenn nichts
-            Auffälliges zu messen ist, sagt die App das.
-          </p>
+          <p class="unterzeile">Muster in der Natur, gemessen mit der Handykamera</p>
         </div>
 
         <button class="knopf knopf-gross" id="knopf-start">Kamera freigeben</button>
         <p class="fehler" id="start-fehler" hidden></p>
 
-        <p class="fussnote">
-          Alles rechnet auf dem Gerät. Kein Bild verlässt das Telefon, nichts wird gespeichert.
-        </p>
+        <details class="ausklapp">
+          <summary>Was die App misst</summary>
+          <p>
+            Über die Kanten des Kamerabildes wird ein Gitter gelegt und gezählt, in wie vielen
+            Kästchen eine Kante liegt — bei fünf immer feineren Gittern. Daraus ergibt sich die
+            fraktale Dimension: eine Zahl zwischen 1 (Linie) und 2 (Fläche).
+          </p>
+          <p class="zurueckhaltung">
+            Sie beschreibt eine Tendenz des Ausschnitts, keine Eigenschaft der Pflanze. Wenn
+            nichts Auffälliges zu messen ist, sagt die App das.
+          </p>
+        </details>
+
+        <p class="fussnote">Alles rechnet auf dem Gerät. Kein Bild verlässt das Telefon.</p>
       </section>
 
       <!-- Messansicht -->
       <section class="ansicht" id="ansicht-mess" hidden>
         <header class="mess-kopf">
-          <h2 class="mess-titel">Box-Counting</h2>
+          <h2 class="mess-titel">Messung</h2>
           <button class="knopf knopf-klein" id="knopf-zurueck" type="button">Beenden</button>
         </header>
 
@@ -67,41 +65,46 @@
           </div>
         </div>
 
-        <p class="deutung" id="deutung"></p>
-
-        <dl class="rand">
-          <div class="rand-paar">
-            <dt>Schwankung, 10 s</dt>
-            <dd id="rand-schwankung">—</dd>
-          </div>
-          <div class="rand-paar">
-            <dt>Vertrauen</dt>
-            <dd id="rand-konfidenz">—</dd>
-          </div>
-          <div class="rand-paar">
-            <dt>Kantendichte</dt>
-            <dd id="rand-dichte">—</dd>
-          </div>
-          <div class="rand-paar">
-            <dt>Geradheit r²</dt>
-            <dd id="rand-r2">—</dd>
-          </div>
-          <div class="rand-paar">
-            <dt>Messungen je Sekunde</dt>
-            <dd id="rand-messrate">—</dd>
-          </div>
-          <div class="rand-paar">
-            <dt>Belichtung</dt>
-            <dd id="rand-belichtung">—</dd>
-          </div>
-        </dl>
-
         <div class="knoepfe">
           <button class="knopf" id="knopf-erklaeren" type="button">Was heißt das?</button>
           <button class="knopf" id="knopf-kanten" type="button" aria-pressed="false">
-            Kantenbild zeigen
+            Kantenbild
           </button>
         </div>
+
+        <details class="ausklapp">
+          <summary>Messprotokoll</summary>
+          <dl class="rand">
+            <div class="rand-paar">
+              <dt>Schwankung, 10 s</dt>
+              <dd id="rand-schwankung">—</dd>
+            </div>
+            <div class="rand-paar">
+              <dt>Vertrauen</dt>
+              <dd id="rand-konfidenz">—</dd>
+            </div>
+            <div class="rand-paar">
+              <dt>Kantendichte</dt>
+              <dd id="rand-dichte">—</dd>
+            </div>
+            <div class="rand-paar">
+              <dt>Geradheit r²</dt>
+              <dd id="rand-r2">—</dd>
+            </div>
+            <div class="rand-paar">
+              <dt>Helligkeit</dt>
+              <dd id="rand-helligkeit">—</dd>
+            </div>
+            <div class="rand-paar">
+              <dt>Belichtung</dt>
+              <dd id="rand-belichtung">—</dd>
+            </div>
+            <div class="rand-paar">
+              <dt>Messungen je Sekunde</dt>
+              <dd id="rand-messrate">—</dd>
+            </div>
+          </dl>
+        </details>
       </section>
 
       <!-- Erklärblatt -->

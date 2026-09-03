@@ -28,6 +28,41 @@ interface PhotoConstraints {
   whiteBalanceMode?: string;
 }
 
+/**
+ * Wartet, bis das Videoelement seine Bildgroesse kennt -- vorher laesst sich
+ * der Ausschnitt nicht berechnen.
+ *
+ * Warum so umstaendlich: Auf `loadedmetadata` allein zu warten haengt sich auf.
+ * Das Ereignis kann bereits durch sein, bevor der Zuhoerer haengt, und beim
+ * zweiten Start mit demselben Element kommt es unter Umstaenden gar nicht mehr.
+ * Genau das ist passiert -- die App blieb nach "Beenden" und erneutem Start
+ * stumm stehen, ohne Fehler, ohne Bild. Deshalb drei Wege gleichzeitig:
+ * das Ereignis, eine regelmaessige Abfrage und eine Frist. Einer greift immer.
+ */
+function warteAufBild(video: HTMLVideoElement, hoechstensMs = 4000): Promise<void> {
+  if (video.videoWidth > 0) return Promise.resolve();
+
+  return new Promise<void>((fertig) => {
+    let erledigt = false;
+    const beenden = (): void => {
+      if (erledigt) return;
+      erledigt = true;
+      video.removeEventListener('loadedmetadata', beenden);
+      video.removeEventListener('resize', beenden);
+      clearInterval(abfrage);
+      clearTimeout(frist);
+      fertig();
+    };
+
+    video.addEventListener('loadedmetadata', beenden);
+    video.addEventListener('resize', beenden);
+    const abfrage = setInterval(() => {
+      if (video.videoWidth > 0) beenden();
+    }, 50);
+    const frist = setTimeout(beenden, hoechstensMs);
+  });
+}
+
 export async function startCamera(video: HTMLVideoElement): Promise<CameraHandle> {
   if (!window.isSecureContext) {
     throw new CameraError(
@@ -67,13 +102,19 @@ export async function startCamera(video: HTMLVideoElement): Promise<CameraHandle
   video.srcObject = stream;
   video.playsInline = true;
   video.muted = true;
-  await video.play();
+  // play() lehnt ab, wenn der Browser das Abspielen unterbricht -- etwa weil
+  // das Element beim Start noch verborgen ist. Das Bild kommt danach trotzdem,
+  // also ist das kein Grund abzubrechen; ob wirklich eines kommt, klaert die
+  // naechste Zeile.
+  await video.play().catch(() => undefined);
+  await warteAufBild(video);
 
-  // Erst wenn Breite und Hoehe stehen, laesst sich der Ausschnitt berechnen.
   if (video.videoWidth === 0) {
-    await new Promise<void>((resolve) => {
-      video.addEventListener('loadedmetadata', () => resolve(), { once: true });
-    });
+    for (const t of stream.getTracks()) t.stop();
+    throw new CameraError(
+      'Die Kamera liefert kein Bild.',
+      'App einmal schließen und neu öffnen; belegt eine andere App die Kamera?',
+    );
   }
 
   const track = stream.getVideoTracks()[0];

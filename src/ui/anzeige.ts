@@ -5,11 +5,12 @@ export interface AnzeigeZustand {
   stabil: boolean;
   /** Warum der Wert unsicher ist, oder was der Nutzer tun kann. */
   hinweis: string;
-  deutung: string;
   schwankung: number | null;
   sekunden: number;
   dichte: number;
   r2: number;
+  /** Mittlere Bildhelligkeit 0..255. */
+  helligkeit: number;
   /** Ausgewertete Bilder je Sekunde. */
   messrate: number;
   belichtung: string;
@@ -53,15 +54,13 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
   const schleier = frag<HTMLElement>(wurzel, '.schleier');
   const wertFeld = frag<HTMLOutputElement>(wurzel, '#wert');
   const hinweisFeld = frag<HTMLElement>(wurzel, '#wert-hinweis');
-  const deutungFeld = frag<HTMLElement>(wurzel, '#deutung');
   const schwankungFeld = frag<HTMLElement>(wurzel, '#rand-schwankung');
   const konfidenzFeld = frag<HTMLElement>(wurzel, '#rand-konfidenz');
   const dichteFeld = frag<HTMLElement>(wurzel, '#rand-dichte');
   const r2Feld = frag<HTMLElement>(wurzel, '#rand-r2');
   const messrateFeld = frag<HTMLElement>(wurzel, '#rand-messrate');
   const belichtungFeld = frag<HTMLElement>(wurzel, '#rand-belichtung');
-
-  let letzteDeutung = '';
+  const helligkeitFeld = frag<HTMLElement>(wurzel, '#rand-helligkeit');
 
   return {
     zeige(z: AnzeigeZustand): void {
@@ -69,13 +68,6 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
       schleier.dataset['vertrauen'] = vertrauensstufe(z.konfidenz);
       schleier.dataset['stabil'] = z.stabil ? 'ja' : 'nein';
       hinweisFeld.textContent = z.hinweis;
-
-      // Der Erklärtext wechselt nur, wenn er sich wirklich ändert. Sonst
-      // flackert er bei jedem Bild.
-      if (z.deutung !== letzteDeutung) {
-        deutungFeld.textContent = z.deutung;
-        letzteDeutung = z.deutung;
-      }
 
       if (z.schwankung === null) {
         schwankungFeld.textContent = '—';
@@ -96,6 +88,8 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
       r2Feld.textContent = z.r2 > 0 ? zahl(z.r2, 4) : '—';
       messrateFeld.textContent = z.messrate > 0 ? zahl(z.messrate, 0) : '—';
       belichtungFeld.textContent = z.belichtung;
+      // Ein Prozentwert der vollen Aussteuerung ist greifbarer als 0..255.
+      helligkeitFeld.textContent = `${zahl((z.helligkeit / 255) * 100, 0)} %`;
     },
   };
 }

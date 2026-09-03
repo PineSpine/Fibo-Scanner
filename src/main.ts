@@ -1,5 +1,6 @@
 import './styles.css';
 import { CameraError, startCamera, type CameraHandle } from './camera/camera.ts';
+import { createBelichtungswaechter } from './camera/belichtung.ts';
 import { createWachhalter } from './camera/wakeLock.ts';
 import { createPipeline, type Pipeline } from './gpu/pipeline.ts';
 import { GpuError } from './gpu/context.ts';
@@ -27,12 +28,20 @@ const glaetter = createSmoother();
 const stabilitaet = createStabilityTracker();
 const anzeige = createAnzeige();
 const wachhalter = createWachhalter();
+const belichtung = createBelichtungswaechter();
 
 let kamera: CameraHandle | null = null;
 let pipeline: Pipeline | null = null;
 let laeuft = false;
+/** Verhindert, dass ein zweiter Tippen den Start doppelt anstoesst. */
+let startetGerade = false;
 let zeigeKanten = false;
-let belichtungstext = '—';
+
+/** 'pendelt' → 'gesperrt' oder 'Automatik', siehe camera/belichtung.ts. */
+let belichtungstext = 'pendelt sich ein';
+let sperreLaeuft = false;
+let gesperrt = false;
+let zuDunkel = false;
 
 /**
  * Gleitender Mittelwert der Messrate. Gezählt werden ausgewertete Bilder, nicht
@@ -51,6 +60,16 @@ function fehlerZeigen(text: string, hinweis = ''): void {
 }
 
 async function messungStarten(): Promise<void> {
+  if (startetGerade || laeuft) return;
+  startetGerade = true;
+  try {
+    await starteWirklich();
+  } finally {
+    startetGerade = false;
+  }
+}
+
+async function starteWirklich(): Promise<void> {
   startFehler.hidden = true;
   try {
     kamera = await startCamera(video);
@@ -74,10 +93,10 @@ async function messungStarten(): Promise<void> {
     return;
   }
 
-  // Belichtungssperre, sobald gemessen wird. Ohne sie regelt die Automatik
-  // während der Messung nach und verschiebt das Kantenbild.
-  const gesperrt = await kamera.lockExposure();
-  belichtungstext = gesperrt.exposure ? 'gesperrt' : 'Automatik';
+  // Die Belichtung wird NICHT hier gesperrt. Die Automatik des Telefons
+  // beginnt dunkel und braucht ein bis zwei Sekunden, bis sie den Raum
+  // gefunden hat; wer vorher sperrt, friert das schwarze Anfangsbild ein.
+  // Gesperrt wird erst, wenn der Wächter meldet, dass das Bild steht.
 
   // Zehn Sekunden ruhig halten heisst zehn Sekunden nicht tippen. Ohne diese
   // Sperre dimmt das Telefon mitten in der Messung.
@@ -87,6 +106,11 @@ async function messungStarten(): Promise<void> {
   ansichtMess.hidden = false;
   glaetter.reset();
   stabilitaet.reset();
+  belichtung.reset();
+  belichtungstext = 'pendelt sich ein';
+  sperreLaeuft = false;
+  gesperrt = false;
+  zuDunkel = false;
   letztesErgebnis = null;
   letzteMessung = 0;
   messrate = 0;
@@ -128,27 +152,45 @@ function schleife(jetzt: number): void {
     }
     letzteMessung = jetzt;
 
+    const licht = belichtung.beobachte(neuestes.gray, neuestes.timestamp);
+    zuDunkel = licht.zuDunkel;
+
+    // Erst wenn das Bild steht, wird die Belichtung festgehalten. Genau einmal.
+    if (licht.eingependelt && !gesperrt && !sperreLaeuft && kamera) {
+      sperreLaeuft = true;
+      void kamera.lockExposure().then((erfolg) => {
+        gesperrt = true;
+        belichtungstext = erfolg.exposure ? 'gesperrt' : 'Automatik';
+      });
+    }
+
     const ergebnis = metrik.run(neuestes);
     const konfidenz = metrik.confidence(ergebnis);
     letztesErgebnis = ergebnis;
 
-    const geglaettet = glaetter.push(ergebnis.value, konfidenz);
-    // In die Schwankungsrechnung geht nur, was auch angezeigt wird -- sonst
-    // misst die Anzeige eine Ruhe, die sie gar nicht hat.
-    const bericht = glaetter.settled
-      ? stabilitaet.push(geglaettet, neuestes.timestamp)
-      : stabilitaet.report;
+    // Während die Automatik noch regelt, wandert das Kantenbild mit der
+    // Helligkeit statt mit dem Motiv. Solche Bilder gehören weder in die
+    // Glättung noch in die Schwankungsrechnung -- sonst misst das
+    // Zehn-Sekunden-Fenster die Einpendelphase mit.
+    const zaehlt = licht.eingependelt;
+    const geglaettet = zaehlt ? glaetter.push(ergebnis.value, konfidenz) : glaetter.value;
+    const bericht =
+      zaehlt && glaetter.settled
+        ? stabilitaet.push(geglaettet, neuestes.timestamp)
+        : stabilitaet.report;
+
+    const zeigeWert = zaehlt && glaetter.settled;
 
     anzeige.zeige({
-      wert: glaetter.settled ? geglaettet : null,
-      konfidenz,
+      wert: zeigeWert ? geglaettet : null,
+      konfidenz: zaehlt ? konfidenz : 0,
       stabil: bericht.stable,
-      hinweis: hinweisText(ergebnis, konfidenz, bericht.stable),
-      deutung: glaetter.settled ? metrik.explain({ ...ergebnis, value: geglaettet }) : '',
+      hinweis: hinweisText(ergebnis, konfidenz, bericht.stable, licht.eingependelt),
       schwankung: bericht.samples > 1 ? bericht.span : null,
       sekunden: bericht.seconds,
       dichte: ergebnis.detail['density'] ?? 0,
       r2: ergebnis.detail['r2'] ?? 0,
+      helligkeit: licht.helligkeit,
       messrate,
       belichtung: belichtungstext,
     });
@@ -160,7 +202,17 @@ function schleife(jetzt: number): void {
   }
 }
 
-function hinweisText(ergebnis: Result, konfidenz: number, stabil: boolean): string {
+function hinweisText(
+  ergebnis: Result,
+  konfidenz: number,
+  stabil: boolean,
+  eingependelt: boolean,
+): string {
+  // Die Reihenfolge ist die Rangfolge: was der Nutzer zuerst beheben kann,
+  // steht zuerst. Eine noch laufende Belichtungsautomatik erklärt jeden
+  // anderen Vorbehalt gleich mit.
+  if (!eingependelt) return 'Belichtung pendelt sich ein …';
+  if (zuDunkel) return 'zu dunkel – mehr Licht oder heller belichten';
   if (ergebnis.caveats.length > 0) return ergebnis.caveats[0]!;
   if (konfidenz < 0.6) return 'Messung noch unsicher';
   if (stabil) return 'Wert steht ruhig';
