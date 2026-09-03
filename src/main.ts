@@ -371,6 +371,8 @@ function hauptWaehlen(): Verfahren {
 }
 
 function alsBefund(v: Verfahren): Befund {
+  const skala = v.metrik.skala;
+  const wertZahl = v.stetig ? v.glaetter.value : (v.ergebnis?.value ?? 0);
   return {
     id: v.metrik.id,
     name: v.metrik.label,
@@ -378,6 +380,13 @@ function alsBefund(v: Verfahren): Befund {
     konfidenz: v.konfidenz,
     treffer: v.wert !== null && (v.ergebnis?.detail['treffer'] ?? 0) === 1,
     hinweis: v.hinweis,
+    deutung: v.ergebnis?.deutung ?? '',
+    skala: skala
+      ? {
+          ...skala,
+          anteil: Math.max(0, Math.min(1, (wertZahl - skala.min) / (skala.max - skala.min))),
+        }
+      : undefined,
   };
 }
 

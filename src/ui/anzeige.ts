@@ -9,6 +9,10 @@ export interface Befund {
   treffer: boolean;
   /** Warum der Wert unsicher ist, oder was der Nutzer tun kann. */
   hinweis: string;
+  /** Drei Wörter zur Einordnung des Werts. */
+  deutung: string;
+  /** Spanne mit Marke, falls der Wert auf einer festen Achse liegt. */
+  skala?: { min: number; max: number; links: string; rechts: string; anteil: number } | undefined;
 }
 
 export interface AnzeigeZustand {
@@ -120,16 +124,31 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
       for (const [klasse, tag] of [
         ['befund-name', 'span'],
         ['befund-wert', 'output'],
-        ['befund-vertrauen', 'span'],
+        ['befund-deutung', 'span'],
       ] as const) {
         const el = document.createElement(tag);
         el.className = klasse;
         zeile.append(el);
       }
+
+      // Die Achse macht aus einer Zahl eine Lage: 1,82 liegt weit rechts,
+      // näher an Fläche als an Linie. Das versteht man ohne Vorwissen.
+      const skala = document.createElement('span');
+      skala.className = 'befund-skala';
+      for (const klasse of ['skala-links', 'skala-achse', 'skala-rechts']) {
+        const teil = document.createElement('span');
+        teil.className = klasse;
+        if (klasse === 'skala-achse') teil.append(document.createElement('i'));
+        skala.append(teil);
+      }
+      zeile.append(skala);
+
+      const fuss = document.createElement('span');
+      fuss.className = 'befund-vertrauen';
       const balken = document.createElement('span');
       balken.className = 'befund-balken';
       balken.append(document.createElement('i'));
-      zeile.append(balken);
+      zeile.append(fuss, balken);
       befundListe.append(zeile);
     }
     letzteBefundForm = form;
@@ -152,8 +171,24 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
 
         const name = zeile.querySelector('.befund-name');
         const wert = zeile.querySelector('.befund-wert');
+        const deutung = zeile.querySelector('.befund-deutung');
         const vertrauen = zeile.querySelector('.befund-vertrauen');
         if (name) name.textContent = b.name;
+        if (deutung) deutung.textContent = b.wert === null ? '' : b.deutung;
+
+        const skala = zeile.querySelector<HTMLElement>('.befund-skala');
+        if (skala) {
+          // Ohne Wert keine Achse -- eine Marke, die nirgends steht, verwirrt.
+          skala.hidden = !b.skala || b.wert === null;
+          if (b.skala && b.wert !== null) {
+            const links = skala.querySelector('.skala-links');
+            const rechts = skala.querySelector('.skala-rechts');
+            const marke = skala.querySelector<HTMLElement>('.skala-achse i');
+            if (links) links.textContent = `${b.skala.links} ${zahl(b.skala.min, 1)}`;
+            if (rechts) rechts.textContent = `${b.skala.rechts} ${zahl(b.skala.max, 1)}`;
+            if (marke) marke.style.left = `${Math.round(b.skala.anteil * 100)}%`;
+          }
+        }
         // Ohne Vertrauen keine Zahl, sondern der Grund. Eine Zahl ohne Deckung
         // wäre genau die Behauptung, die die App nicht aufstellen soll.
         if (wert) wert.textContent = b.wert ?? '—';

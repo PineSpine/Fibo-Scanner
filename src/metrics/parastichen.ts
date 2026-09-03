@@ -240,6 +240,11 @@ export function createParastichenMetric(
       return {
         value: gross,
         label: `${klein}/${gross}`,
+        deutung: roh.treffer
+          ? 'benachbarte Fibonacci-Zahlen'
+          : klein > 0
+            ? 'Spiralen gezählt, kein Fibonacci-Paar'
+            : '',
         detail: {
           streuung: roh.streuung,
           links: roh.links,

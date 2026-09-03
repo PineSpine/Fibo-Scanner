@@ -14,7 +14,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
     "dev:https": "node scripts/dev-https.ts",
     "preview:https": "node scripts/preview-https.ts",
-    "ornament": "node scripts/ornament-aufbereiten.ts"
+    "ornament": "node scripts/ornament-aufbereiten.ts",
+    "icon": "node scripts/icon-erzeugen.ts"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

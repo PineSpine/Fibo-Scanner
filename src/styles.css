@@ -352,9 +352,59 @@ body {
   color: var(--ink);
 }
 
+/*
+ * Drei Wörter zur Zahl. "1,82" sagt nichts, wenn man die Spanne nicht kennt --
+ * und die kennt beim ersten Mal niemand.
+ */
+.befund-deutung {
+  grid-column: 1;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+/*
+ * Die Achse macht aus der Zahl eine Lage. Sie zeigt, wo der Wert zwischen den
+ * beiden Enden steht, und beantwortet damit die Frage, die eine nackte Zahl
+ * offen lässt: ist das viel?
+ */
+.befund-skala {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-schwach);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.skala-achse {
+  position: relative;
+  height: 1px;
+  background: var(--ink-zart);
+}
+
+.skala-achse i {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--patina);
+  transition: left 260ms ease;
+}
+
+.befund[data-treffer='ja'] .skala-achse i {
+  background: var(--gold);
+}
+
 .befund-vertrauen {
   grid-column: 1;
-  font-size: 0.85rem;
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
   font-style: italic;
   color: var(--ink-schwach);
 }

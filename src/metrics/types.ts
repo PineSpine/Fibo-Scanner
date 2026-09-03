@@ -22,16 +22,36 @@ export interface Result {
    * "34/55" bei zwei Spiralfamilien. Fehlt er, wird `value` formatiert.
    */
   label?: string;
+  /**
+   * Drei bis vier Woerter, die den Wert einordnen -- "stark verzweigt",
+   * "flaechenfuellend". Eine Zahl allein sagt nur etwas, wenn man ihre Skala
+   * kennt; die kennt beim ersten Mal niemand.
+   */
+  deutung?: string;
   /** Zwischenwerte fuer Anzeige, Pruefung und Fehlersuche. */
   detail: Readonly<Record<string, number>>;
   /** Warum der Wert unsicher ist. Leer heisst: kein bekannter Vorbehalt. */
   caveats: readonly string[];
 }
 
+/**
+ * Die Spanne, in der ein Messwert liegen kann, mit Namen fuer beide Enden.
+ * Die Anzeige macht daraus eine kleine Achse mit einer Marke -- damit sieht
+ * man, ob 1,82 viel ist, ohne es gelernt zu haben.
+ */
+export interface Skala {
+  min: number;
+  max: number;
+  links: string;
+  rechts: string;
+}
+
 export interface Metric {
   id: string;
   /** deutsch, kurz */
   label: string;
+  /** Vorhanden, wenn der Wert auf einer festen Spanne liegt. */
+  skala?: Skala;
   run(frame: Frame): Result;
   /** 0..1, ehrlich */
   confidence(r: Result): number;

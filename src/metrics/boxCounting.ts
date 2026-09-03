@@ -213,10 +213,24 @@ export function boxCount(
   };
 }
 
+/**
+ * Drei Wörter zur Zahl. Die Grenzen stammen aus der Kalibriertabelle: gerade
+ * Linie 1,0, Backsteinwand 1,2 bis 1,5, Baum 1,6 bis 1,8, Rauschen 1,92.
+ */
+function einordnung(d: number): string {
+  if (d <= 0) return '';
+  if (d < 1.1) return 'fast glatt';
+  if (d < 1.35) return 'schwach gegliedert';
+  if (d < 1.6) return 'deutlich verzweigt';
+  if (d < 1.85) return 'stark verzweigt';
+  return 'flächenfüllend';
+}
+
 export function createBoxCountingMetric(options: BoxCountingOptions = DEFAULT_OPTIONS): Metric {
   return {
     id: 'box-counting',
     label: 'Fraktale Dimension',
+    skala: { min: 1, max: 2, links: 'Linie', rechts: 'Fläche' },
 
     phaenomen: [
       "Manche Formen werden nicht einfacher, wenn man näher herangeht. Eine Küstenlinie ist aus zehn Kilometern Höhe zerklüftet und aus zehn Metern auch. Ein Farnwedel besteht aus Fiedern, die aussehen wie kleine Farnwedel.",
@@ -257,7 +271,8 @@ export function createBoxCountingMetric(options: BoxCountingOptions = DEFAULT_OP
       };
       for (let i = 0; i < raw.scales.length; i++) detail[`boxes${raw.scales[i]}`] = raw.counts[i]!;
 
-      return { value: raw.density === 0 ? 0 : raw.slope, detail, caveats };
+      const wert = raw.density === 0 ? 0 : raw.slope;
+      return { value: wert, deutung: einordnung(wert), detail, caveats };
     },
 
     confidence(r: Result): number {
