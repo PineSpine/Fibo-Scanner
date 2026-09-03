@@ -12,10 +12,17 @@ export interface Befund {
 }
 
 export interface AnzeigeZustand {
-  /** Was gerade am meisten hergibt. Steht groß über dem Bild. */
-  haupt: Befund;
-  /** Die übrigen Verfahren, klein darunter. */
-  neben: readonly Befund[];
+  /**
+   * Alle Verfahren, das aussagekräftigste zuerst. Sie stehen zusammen an einer
+   * Stelle: Wer nicht weiß, wonach er sucht, soll nicht an zwei Orten
+   * nachsehen müssen.
+   */
+  befunde: readonly Befund[];
+  /**
+   * Was mit dem Bild selbst nicht stimmt -- zu dunkel, Belichtung regelt noch.
+   * Leer, wenn alles in Ordnung ist; dann bleibt das Bild frei.
+   */
+  zustand: string;
   stabil: boolean;
   schwankung: number | null;
   sekunden: number;
@@ -26,7 +33,7 @@ export interface AnzeigeZustand {
   belichtung: string;
   /** Wann der laufende Stand gebaut wurde. */
   stand: string;
-  /** Zwischenwerte des Hauptbefundes. */
+  /** Zwischenwerte des führenden Verfahrens. */
   detail: Readonly<Record<string, number>>;
 }
 
@@ -88,11 +95,8 @@ function frag<T extends Element>(wurzel: ParentNode, wahl: string): T {
 }
 
 export function createAnzeige(wurzel: ParentNode = document): Anzeige {
-  const schleier = frag<HTMLElement>(wurzel, '.schleier');
-  const verfahrenFeld = frag<HTMLElement>(wurzel, '#wert-name');
-  const wertFeld = frag<HTMLOutputElement>(wurzel, '#wert');
-  const hinweisFeld = frag<HTMLElement>(wurzel, '#wert-hinweis');
-  const nebenListe = frag<HTMLElement>(wurzel, '#nebenbefunde');
+  const zustandFeld = frag<HTMLElement>(wurzel, '#zustand');
+  const befundListe = frag<HTMLElement>(wurzel, '#befunde');
   const schwankungFeld = frag<HTMLElement>(wurzel, '#rand-schwankung');
   const konfidenzFeld = frag<HTMLElement>(wurzel, '#rand-konfidenz');
   const messrateFeld = frag<HTMLElement>(wurzel, '#rand-messrate');
@@ -102,72 +106,66 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
   const detailListe = frag<HTMLElement>(wurzel, '#rand-detail');
 
   let letzteDetailForm = '';
-  let letzteNebenForm = '';
+  let letzteBefundForm = '';
 
-  /** Baut die Zeilen der Nebenbefunde, aber nur wenn sich die Auswahl ändert. */
-  function nebenAufbauen(neben: readonly Befund[]): void {
-    const form = neben.map((b) => b.id).join('|');
-    if (form === letzteNebenForm) return;
-    nebenListe.textContent = '';
-    for (const b of neben) {
+  /** Baut die Zeilen, aber nur wenn sich Auswahl oder Reihenfolge ändern. */
+  function befundeAufbauen(befunde: readonly Befund[]): void {
+    const form = befunde.map((b) => b.id).join('|');
+    if (form === letzteBefundForm) return;
+    befundListe.textContent = '';
+    for (const b of befunde) {
       const zeile = document.createElement('li');
       zeile.className = 'befund';
       zeile.dataset['id'] = b.id;
-      const name = document.createElement('span');
-      name.className = 'befund-name';
-      const wert = document.createElement('span');
-      wert.className = 'befund-wert';
-      const vertrauen = document.createElement('span');
-      vertrauen.className = 'befund-vertrauen';
+      for (const [klasse, tag] of [
+        ['befund-name', 'span'],
+        ['befund-wert', 'output'],
+        ['befund-vertrauen', 'span'],
+      ] as const) {
+        const el = document.createElement(tag);
+        el.className = klasse;
+        zeile.append(el);
+      }
       const balken = document.createElement('span');
       balken.className = 'befund-balken';
       balken.append(document.createElement('i'));
-      zeile.append(name, wert, vertrauen, balken);
-      nebenListe.append(zeile);
+      zeile.append(balken);
+      befundListe.append(zeile);
     }
-    letzteNebenForm = form;
+    letzteBefundForm = form;
   }
 
   return {
     zeige(z: AnzeigeZustand): void {
-      verfahrenFeld.textContent = z.haupt.name;
-      wertFeld.textContent = z.haupt.wert ?? '—';
-      schleier.dataset['vertrauen'] = vertrauensstufe(z.haupt.konfidenz);
-      schleier.dataset['stabil'] = z.stabil ? 'ja' : 'nein';
-      schleier.dataset['treffer'] = z.haupt.treffer ? 'ja' : 'nein';
+      zustandFeld.textContent = z.zustand;
+      zustandFeld.hidden = z.zustand === '';
 
-      // Solange kein Wert dasteht, erklärt der Hinweis allein, woran es liegt.
-      // Steht einer da, gehört das Vertrauen davor -- es ist die Einschränkung,
-      // die immer gilt, der Vorbehalt nur die von heute.
-      hinweisFeld.textContent =
-        z.haupt.wert === null
-          ? z.haupt.hinweis
-          : `Vertrauen ${Math.round(z.haupt.konfidenz * 100)} %${
-              z.haupt.hinweis ? ` · ${z.haupt.hinweis}` : ''
-            }`;
-
-      nebenAufbauen(z.neben);
-      for (const b of z.neben) {
-        const zeile = nebenListe.querySelector<HTMLElement>(`[data-id="${b.id}"]`);
-        if (!zeile) continue;
+      befundeAufbauen(z.befunde);
+      z.befunde.forEach((b, rang) => {
+        const zeile = befundListe.querySelector<HTMLElement>(`[data-id="${b.id}"]`);
+        if (!zeile) return;
+        // Der erste Befund ist der aussagekräftigste. Er steht größer da --
+        // aber in derselben Liste, nicht an einem anderen Ort.
+        zeile.dataset['rang'] = rang === 0 ? 'erster' : 'weiterer';
         zeile.dataset['vertrauen'] = vertrauensstufe(b.konfidenz);
         zeile.dataset['treffer'] = b.treffer ? 'ja' : 'nein';
+
         const name = zeile.querySelector('.befund-name');
         const wert = zeile.querySelector('.befund-wert');
+        const vertrauen = zeile.querySelector('.befund-vertrauen');
         if (name) name.textContent = b.name;
         // Ohne Vertrauen keine Zahl, sondern der Grund. Eine Zahl ohne Deckung
         // wäre genau die Behauptung, die die App nicht aufstellen soll.
-        if (wert) wert.textContent = b.wert ?? (b.hinweis || 'nichts gefunden');
-        const vertrauen = zeile.querySelector('.befund-vertrauen');
+        if (wert) wert.textContent = b.wert ?? '—';
         if (vertrauen) {
           vertrauen.textContent =
             b.wert === null
-              ? 'nichts gefunden'
+              ? b.hinweis || 'nichts gefunden'
               : `Vertrauen ${Math.round(b.konfidenz * 100)} %${b.hinweis ? ` · ${b.hinweis}` : ''}`;
         }
         const fuellung = zeile.querySelector<HTMLElement>('.befund-balken i');
         if (fuellung) fuellung.style.width = `${Math.round(b.konfidenz * 100)}%`;
-      }
+      });
 
       if (z.schwankung === null) {
         schwankungFeld.textContent = '—';
@@ -183,7 +181,7 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
         else schwankungFeld.removeAttribute('data-treffer');
       }
 
-      konfidenzFeld.textContent = `${Math.round(z.haupt.konfidenz * 100)} %`;
+      konfidenzFeld.textContent = `${Math.round((z.befunde[0]?.konfidenz ?? 0) * 100)} %`;
       messrateFeld.textContent = z.messrate > 0 ? zahl(z.messrate, 0) : '—';
       belichtungFeld.textContent = z.belichtung;
       standFeld.textContent = z.stand;
@@ -215,4 +213,44 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
       }
     },
   };
+}
+
+/**
+ * Baut je Verfahren einen Ausklapper: erst das Phänomen, dann die Messung.
+ *
+ * Getrennt, weil es zwei verschiedene Fragen sind. Die erste -- was ist das
+ * überhaupt -- stellt sich jedem einmal. Die zweite -- wie kommt die Zahl
+ * zustande -- nur dem, der der Zahl nicht traut.
+ */
+export function erklaerungenAufbauen(
+  ziel: HTMLElement,
+  verfahren: ReadonlyArray<{ label: string; phaenomen: readonly string[]; verfahren: readonly string[] }>,
+): void {
+  ziel.textContent = '';
+  for (const v of verfahren) {
+    const block = document.createElement('details');
+    block.className = 'ausklapp';
+    const griff = document.createElement('summary');
+    griff.textContent = v.label;
+    block.append(griff);
+
+    for (const absatz of v.phaenomen) {
+      const p = document.createElement('p');
+      p.textContent = absatz;
+      block.append(p);
+    }
+
+    const zwischen = document.createElement('h3');
+    zwischen.textContent = 'Wie die App das misst';
+    block.append(zwischen);
+
+    for (const absatz of v.verfahren) {
+      const p = document.createElement('p');
+      p.className = 'zurueckhaltung';
+      p.textContent = absatz;
+      block.append(p);
+    }
+
+    ziel.append(block);
+  }
 }

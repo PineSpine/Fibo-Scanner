@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#E6E1CE" />
-    <meta name="description" content="Misst Muster in der Natur: fraktale Dimension per Handykamera." />
+    <meta name="description" content="Misst Muster in der Natur: fraktale Dimension und Fibonacci-Spiralen per Handykamera." />
     <title>Fibo-Scanner</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preload" href="/fonts/eb-garamond.woff2" as="font" type="font/woff2" crossorigin />
@@ -27,13 +27,13 @@
         <details class="ausklapp">
           <summary>Was die App misst</summary>
           <p>
-            Über die Kanten des Kamerabildes wird ein Gitter gelegt und gezählt, in wie vielen
-            Kästchen eine Kante liegt — bei fünf immer feineren Gittern. Daraus ergibt sich die
-            fraktale Dimension: eine Zahl zwischen 1 (Linie) und 2 (Fläche).
+            Sie halten die Kamera auf etwas Gewachsenes oder Gebautes und bekommen Zahlen, die
+            beschreiben, wie es aufgebaut ist: wie stark verzweigt eine Form ist, und ob ein
+            Blütenstand nach der Fibonacci-Folge angeordnet ist.
           </p>
           <p class="zurueckhaltung">
-            Sie beschreibt eine Tendenz des Ausschnitts, keine Eigenschaft der Pflanze. Wenn
-            nichts Auffälliges zu messen ist, sagt die App das.
+            Die Zahlen beschreiben den Bildausschnitt, nicht die Pflanze. Wenn nichts
+            Auffälliges zu messen ist, sagt die App das, statt etwas zu behaupten.
           </p>
         </details>
 
@@ -47,9 +47,8 @@
           <button class="knopf knopf-klein" id="knopf-zurueck" type="button">Beenden</button>
         </header>
 
-        <!-- Eine Zeile, immer dieselbe. Was für ein Motiv gerade fehlt, sagen
-             die Befunde selbst -- eine Anweisung, die sich ständig ändert,
-             liest niemand. -->
+        <!-- Eine Zeile, immer dieselbe. Was einem einzelnen Verfahren gerade
+             fehlt, sagt dieses Verfahren in seiner eigenen Zeile. -->
         <p class="anleitung">Kamera auf ein Muster halten: Farn, Rinde, Mauerwerk, Zapfen.</p>
 
         <div class="platte">
@@ -68,23 +67,22 @@
             <path class="ecke" d="M14 98 C6 98 2 94 2 86" />
           </svg>
 
-          <div class="schleier">
-            <p class="wert-name" id="wert-name">Fraktale Dimension</p>
-            <output class="wert" id="wert">—</output>
-            <p class="wert-hinweis" id="wert-hinweis">Kamera startet …</p>
-          </div>
+          <!-- Über dem Bild steht nur, was mit dem Bild selbst nicht stimmt.
+               Die Messwerte stehen darunter, alle an derselben Stelle. -->
+          <p class="zustand" id="zustand" hidden></p>
         </div>
 
-        <!-- Was sonst noch gemessen wurde. Alles läuft gleichzeitig; hier steht,
-             was es nicht auf den großen Platz geschafft hat. -->
-        <ul class="befunde" id="nebenbefunde"></ul>
+        <ul class="befunde" id="befunde"></ul>
 
         <div class="knoepfe">
-          <button class="knopf" id="knopf-erklaeren" type="button">Was heißt das?</button>
           <button class="knopf" id="knopf-kanten" type="button" aria-pressed="false">
             Kanten zeigen
           </button>
         </div>
+
+        <!-- Je Verfahren ein Ausklapper: erst das Phänomen, dann die Messung.
+             Wird beim Start aus den Verfahren selbst gebaut. -->
+        <div id="erklaerungen"></div>
 
         <details class="ausklapp">
           <summary>Messprotokoll</summary>
@@ -114,69 +112,10 @@
               <dd id="rand-stand">—</dd>
             </div>
           </dl>
-          <!-- Was das jeweilige Verfahren selbst meldet, wechselt mit dem Modus. -->
+          <!-- Was das führende Verfahren selbst meldet. -->
           <dl class="rand" id="rand-detail"></dl>
         </details>
       </section>
-
-      <!-- Erklärblatt -->
-      <aside class="blatt" id="blatt" hidden>
-        <div class="blatt-inhalt">
-          <h2 class="blatt-titel">Box-Counting</h2>
-          <hr class="linie" />
-          <p id="blatt-text"></p>
-
-          <h3>Was gemessen wird</h3>
-          <p>
-            Aus dem Kamerabild wird ein mittiger quadratischer Ausschnitt auf 512 × 512 Punkte
-            gerechnet. Darauf läuft ein <b>Sobel-Operator</b>, der Helligkeitssprünge findet –
-            das Kantenbild. Ein Schwellwert nach Otsu trennt Kante von Fläche. Über dieses
-            Kantenbild werden Gitter mit 2, 4, 8, 16 und 32 Punkten Kästchenbreite gelegt und
-            die belegten Kästchen gezählt. Trägt man beides doppelt logarithmisch auf, ist die
-            Steigung der Ausgleichsgeraden die Dimension.
-          </p>
-
-          <h3>Erwartungswerte</h3>
-          <table class="tafel">
-            <tbody>
-              <tr><th scope="row">glatte Linie</th><td>1,0</td></tr>
-              <tr><th scope="row">Backsteinwand</th><td>1,2 – 1,5</td></tr>
-              <tr><th scope="row">Farnwedel</th><td>etwa 1,7</td></tr>
-              <tr><th scope="row">Baumkrone im Winter</th><td>etwa 1,8</td></tr>
-              <tr><th scope="row">Rauschen</th><td>nahe 2,0</td></tr>
-            </tbody>
-          </table>
-
-          <h3>Wo der Wert lügt</h3>
-          <p>
-            Abstand und Zoom verändern ihn: dieselbe Buche misst sich anders, wenn sie das Bild
-            füllt, als wenn sie darin klein steht. Gegenlicht, Bewegungsunschärfe und eine
-            nachregelnde Belichtungsautomatik verschieben das Kantenbild. Deshalb steht neben
-            dem Wert immer, wie sehr das Verfahren ihm selbst traut – und woran es hakt.
-          </p>
-
-          <h3>Fachwörter</h3>
-          <dl class="glossar">
-            <dt>Box-Counting</dt>
-            <dd>Kästchenzählung. Verfahren, um zu messen, wie dicht eine Struktur den Raum füllt.</dd>
-            <dt>Fraktale Dimension</dt>
-            <dd>
-              Zahl zwischen Linie (1) und Fläche (2). Sie sagt, wie viel mehr Struktur sichtbar
-              wird, wenn man genauer hinsieht.
-            </dd>
-            <dt>Sobel-Operator</dt>
-            <dd>Rechenvorschrift, die Helligkeitssprünge im Bild hervorhebt – die Kanten.</dd>
-            <dt>r²</dt>
-            <dd>
-              Wie gut die gemessenen Punkte auf einer Geraden liegen. Nahe 1 heißt: die Struktur
-              verhält sich über alle geprüften Größen gleich. Deutlich darunter heißt: sie tut
-              es nicht, und dann ist eine einzelne Dimension die falsche Auskunft.
-            </dd>
-          </dl>
-
-          <button class="knopf" id="knopf-blatt-zu" type="button">Zurück zur Messung</button>
-        </div>
-      </aside>
     </main>
 
     <img class="ornament" src="/ornament.png" alt="" aria-hidden="true" />

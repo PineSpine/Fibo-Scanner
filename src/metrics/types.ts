@@ -35,5 +35,20 @@ export interface Metric {
   run(frame: Frame): Result;
   /** 0..1, ehrlich */
   confidence(r: Result): number;
+  /** Was der gemessene Wert bedeutet. Haengt vom Ergebnis ab. */
   explain(r: Result): string;
+
+  /**
+   * Was das Phaenomen ueberhaupt ist -- ohne ein Wort ueber Messtechnik, fuer
+   * jemanden, der den Begriff zum ersten Mal liest. Ein Eintrag je Absatz --
+   * so braucht der Text keine Zeilenumbrueche im Quelltext.
+   */
+  phaenomen: readonly string[];
+
+  /**
+   * Wie die App es misst. Kurz, und in Bildern statt in Formeln: Wer wissen
+   * will, warum eine Zahl herauskommt, soll das lesen koennen, ohne vorher
+   * Bildverarbeitung gelernt zu haben.
+   */
+  verfahren: readonly string[];
 }

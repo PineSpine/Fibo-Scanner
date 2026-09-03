@@ -218,6 +218,18 @@ export function createBoxCountingMetric(options: BoxCountingOptions = DEFAULT_OP
     id: 'box-counting',
     label: 'Fraktale Dimension',
 
+    phaenomen: [
+      "Manche Formen werden nicht einfacher, wenn man näher herangeht. Eine Küstenlinie ist aus zehn Kilometern Höhe zerklüftet und aus zehn Metern auch. Ein Farnwedel besteht aus Fiedern, die aussehen wie kleine Farnwedel.",
+      "Für solche Formen reicht die gewohnte Vorstellung von Dimension nicht. Ein Strich ist eindimensional, eine Fläche zweidimensional — aber ein Farnwedel liegt dazwischen: Er ist mehr als ein Strich und weniger als eine Fläche. Diese Zwischenzahl heißt fraktale Dimension. Je höher sie ist, desto dichter füllt die Form den Raum aus, in dem sie liegt.",
+      "Eine gerade Linie ergibt 1,0. Eine Backsteinwand etwa 1,2. Ein Farnwedel ungefähr 1,7, eine kahle Baumkrone im Winter 1,8. Bei 2,0 ist nichts mehr zu erkennen — dann füllt die Struktur die Fläche vollständig, und das ist meistens Rauschen und keine Ordnung.",
+    ],
+
+    verfahren: [
+      "Die App sucht zuerst die Kanten im Bild: alle Stellen, an denen die Helligkeit springt. Über diese Kanten legt sie ein Gitter und zählt, in wie vielen Kästchen überhaupt eine Kante liegt. Dann halbiert sie die Kästchenbreite und zählt noch einmal — fünfmal hintereinander.",
+      "Bei einer glatten Linie verdoppelt sich die Zahl mit jeder Halbierung. Bei einer vollen Fläche vervierfacht sie sich. Alles dazwischen ergibt die Zwischenzahl.",
+      "Was dabei gezählt wurde, macht der Knopf „Kanten zeigen“ sichtbar: Die grün eingezeichneten Punkte sind genau die, die in die Zählung eingegangen sind.",
+    ],
+
     run(frame: Frame): Result {
       const raw = boxCount(frame, options);
       const usable = raw.counts.filter((c) => c > 0).length;

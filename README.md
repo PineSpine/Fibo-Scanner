@@ -356,8 +356,7 @@ Gitterlagen unter 0,0001.
 - **Ausschnitt und Abstand.** Füllt das Motiv das Bild, sind die groben Kästchen
   alle belegt, und der Wert steigt. Dieselbe Buche misst sich anders, wenn sie
   klein im Bild steht. Das ist keine Ungenauigkeit, sondern die Frage, über
-  welche Größen gemessen wird — das Erklärblatt nennt deshalb den Skalenbereich
-  ausdrücklich.
+  welche Größen gemessen wird.
 - **Flächen ohne scharfe Kanten** (Nebel, weiche Verläufe) liefern eine Zahl,
   der das Verfahren selbst nicht traut. Die Konfidenz fällt dann auf null, und
   die Zahl tritt zurück, statt zu verschwinden.

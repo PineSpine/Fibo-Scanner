@@ -211,6 +211,19 @@ export function createParastichenMetric(
     // Fachbegriff steht im Erklaertext, in der Anzeige steht, worum es geht.
     label: 'Fibonacci-Spiralen',
 
+    phaenomen: [
+      "Auf einer Sonnenblume, einem Kiefernzapfen oder einem Romanesco sieht man Spiralen — und zwar in zwei Richtungen zugleich, nach links und nach rechts gedreht. Zählt man beide, kommen fast immer benachbarte Zahlen aus derselben Reihe heraus: 21 und 34, oder 34 und 55, oder 55 und 89.",
+      "Diese Reihe heißt Fibonacci-Folge. Jede Zahl darin ist die Summe der beiden davor: 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89.",
+      "Der Grund dafür ist keine Zahlenmagie, sondern Platzmangel. Eine Pflanze setzt ein Blütchen nach dem anderen an und dreht sich dabei jedes Mal um denselben Winkel weiter. Wäre dieser Winkel ein glatter Bruchteil des Vollkreises — ein Drittel etwa —, säße jedes dritte Blütchen genau über dem ersten und nähme ihm das Licht. Der Winkel, bei dem sich am wenigsten überdeckt, liegt bei rund 137,5 Grad. Aus ihm entstehen die Spiralen von selbst, und ihre Anzahlen sind genau die Fibonacci-Zahlen.",
+      "In der Fachsprache heißen die Spiralarme Parastichen.",
+    ],
+
+    verfahren: [
+      "Die App rollt das Bild um seine Mitte ab: waagerecht der Winkel, senkrecht der Abstand zur Mitte. In dieser Darstellung wird aus jeder Spirale eine schräge Gerade — und wie oft ein solches Muster den Kreis umrundet, lässt sich abzählen. Genau das ist die Zahl der Spiralarme.",
+      "Findet die App zwei Familien, legt sie sie als Linien ins Kamerabild, dorthin, wo sie gemessen wurden. Sind die beiden Zahlen in der Fibonacci-Folge benachbart, färben sie sich ockergolden.",
+      "Das gelingt nur, wenn der Blütenstand frontal und formatfüllend im Rahmen steht. Von schräg gesehen verzerren sich die Spiralen, und die Zählung stimmt nicht mehr. Findet die App nichts, zeichnet sie auch nichts — eine Linie ohne Befund wäre eine Behauptung.",
+    ],
+
     run(frame: Frame): Result {
       const roh = parastichen(frame, optionen);
       const caveats: string[] = [];

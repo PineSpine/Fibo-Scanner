@@ -8,7 +8,7 @@ import { createBoxCountingMetric } from './metrics/boxCounting.ts';
 import { createParastichenMetric, parastichen } from './metrics/parastichen.ts';
 import type { Metric, Result } from './metrics/types.ts';
 import { createSmoother, createStabilityTracker, type Smoother } from './calibration/stability.ts';
-import { createAnzeige, type Befund } from './ui/anzeige.ts';
+import { createAnzeige, erklaerungenAufbauen, type Befund } from './ui/anzeige.ts';
 import { createNachzeichner } from './ui/nachzeichnung.ts';
 import { LOGPOLAR_STANDARD } from './metrics/logPolar.ts';
 import type { ParastichenRoh } from './metrics/parastichen.ts';
@@ -21,8 +21,6 @@ function frag<T extends Element>(wahl: string): T {
 
 const ansichtStart = frag<HTMLElement>('#ansicht-start');
 const ansichtMess = frag<HTMLElement>('#ansicht-mess');
-const blatt = frag<HTMLElement>('#blatt');
-const blattText = frag<HTMLElement>('#blatt-text');
 const startFehler = frag<HTMLElement>('#start-fehler');
 const video = frag<HTMLVideoElement>('#video');
 const kanten = frag<HTMLCanvasElement>('#kanten');
@@ -113,6 +111,12 @@ const wachhalter = createWachhalter();
 const belichtung = createBelichtungswaechter();
 const nachzeichner = createNachzeichner(frag<SVGSVGElement>('#nachzeichnung'));
 
+// Die Erklaerungen stehen in den Verfahren selbst; die Anzeige kennt keines.
+erklaerungenAufbauen(
+  frag<HTMLElement>('#erklaerungen'),
+  verfahren.map((v) => v.metrik),
+);
+
 let kamera: CameraHandle | null = null;
 let pipeline: Pipeline | null = null;
 let laeuft = false;
@@ -153,9 +157,6 @@ const SPERRE_PRUEFDAUER = 1500;
  */
 let messrate = 0;
 let letzteMessung = 0;
-
-/** Letztes Ergebnis, damit die Anzeige zwischen zwei Messungen nicht leer wird. */
-let letztesErgebnis: Result | null = null;
 
 function fehlerZeigen(text: string, hinweis = ''): void {
   startFehler.textContent = hinweis ? `${text} ${hinweis}` : text;
@@ -224,7 +225,6 @@ async function starteWirklich(): Promise<void> {
   pruefungBis = 0;
   nichtMehrSperren = false;
   zuDunkel = false;
-  letztesErgebnis = null;
   letzteMessung = 0;
   messrate = 0;
   laeuft = true;
@@ -305,7 +305,8 @@ function schleife(jetzt: number): void {
     }
 
     const haupt = hauptWaehlen();
-    const neben = verfahren.filter((v) => v !== haupt);
+    // Das aussagekräftigste zuerst, dann die übrigen -- alle in einer Liste.
+    const sortiert = [haupt, ...verfahren.filter((v) => v !== haupt)];
 
     // Nachgezeichnet wird nur, was auch gefunden wurde.
     const spirale = verfahren.find((v) => !v.stetig);
@@ -319,11 +320,9 @@ function schleife(jetzt: number): void {
       nachzeichner.loeschen();
     }
 
-    letztesErgebnis = haupt.ergebnis;
-
     anzeige.zeige({
-      haupt: alsBefund(haupt, licht.eingependelt),
-      neben: neben.map((v) => alsBefund(v, licht.eingependelt)),
+      befunde: sortiert.map((v) => alsBefund(v)),
+      zustand: zustandText(licht.eingependelt),
       stabil: bericht.stable,
       schwankung: bericht.samples > 1 ? bericht.span : null,
       sekunden: bericht.seconds,
@@ -371,15 +370,25 @@ function hauptWaehlen(): Verfahren {
   return beste;
 }
 
-function alsBefund(v: Verfahren, eingependelt: boolean): Befund {
+function alsBefund(v: Verfahren): Befund {
   return {
     id: v.metrik.id,
     name: v.metrik.label,
     wert: v.wert,
     konfidenz: v.konfidenz,
     treffer: v.wert !== null && (v.ergebnis?.detail['treffer'] ?? 0) === 1,
-    hinweis: eingependelt ? (zuDunkel ? 'zu dunkel – mehr Licht' : v.hinweis) : 'Belichtung pendelt sich ein …',
+    hinweis: v.hinweis,
   };
+}
+
+/**
+ * Über dem Bild steht nur, was mit dem Bild selbst nicht stimmt. Alles andere
+ * gehört zu einem bestimmten Verfahren und steht in dessen Zeile.
+ */
+function zustandText(eingependelt: boolean): string {
+  if (!eingependelt) return 'Belichtung pendelt sich ein …';
+  if (zuDunkel) return 'Zu dunkel – mehr Licht';
+  return '';
 }
 
 function wertText(ergebnis: Result): string {
@@ -451,17 +460,6 @@ frag<HTMLButtonElement>('#knopf-start').addEventListener('click', () => {
 });
 
 frag<HTMLButtonElement>('#knopf-zurueck').addEventListener('click', messungBeenden);
-
-frag<HTMLButtonElement>('#knopf-erklaeren').addEventListener('click', () => {
-  blattText.textContent = letztesErgebnis
-    ? (verfahren.find((v) => v.metrik.id === hauptId) ?? verfahren[0]!).metrik.explain(letztesErgebnis)
-    : 'Noch kein Messwert. Die Erklärung füllt sich, sobald etwas gemessen wurde.';
-  blatt.hidden = false;
-});
-
-frag<HTMLButtonElement>('#knopf-blatt-zu').addEventListener('click', () => {
-  blatt.hidden = true;
-});
 
 const kantenKnopf = frag<HTMLButtonElement>('#knopf-kanten');
 kantenKnopf.addEventListener('click', () => {
