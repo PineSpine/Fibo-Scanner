@@ -529,40 +529,68 @@ table.tafel td {
   }
 }
 
-/* --------------------------------------------------------------- Verfahren */
+/* --------------------------------------------------------------- Befunde */
 
 /*
- * Zwei Verfahren, ein Umschalter. Box-Counting läuft auf jedem Motiv, die
- * Spiralenzählung braucht einen Blütenstand -- deshalb steht sie nicht
- * nebenher, sondern wird gewählt.
+ * Die Nebenbefunde. Alle Verfahren laufen gleichzeitig; das mit dem höchsten
+ * Vertrauen steht groß über dem Bild, die übrigen hier als Zeile. Der Balken
+ * zeigt das Vertrauen -- ohne ihn stünden vier Zahlen gleich laut nebeneinander,
+ * und man wüsste nicht, welcher zu trauen ist.
  */
-.modi {
-  display: flex;
-  gap: 0;
-  border: 1px solid var(--ink-zart);
-  border-radius: 2px;
-  overflow: hidden;
+.befunde {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
 }
 
-.modus {
-  font-family: var(--serif);
-  font-size: 0.85rem;
-  letter-spacing: 0.08em;
+.befund {
+  display: grid;
+  grid-template-columns: auto 1fr 3.5rem;
+  align-items: baseline;
+  gap: 0.7rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px dotted var(--ink-zart);
+  font-size: 0.9rem;
+}
+
+.befund-name {
   color: var(--ink-schwach);
-  background: transparent;
-  border: 0;
-  padding: 0.35rem 0.9rem;
-  cursor: pointer;
-  transition: color 140ms ease, background-color 140ms ease;
+  letter-spacing: 0.04em;
 }
 
-.modus + .modus {
-  border-left: 1px solid var(--ink-zart);
+.befund-wert {
+  text-align: right;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
-.modus[aria-pressed='true'] {
-  color: var(--paper);
+/* Ohne Vertrauen steht dort kein Wert, sondern der Grund -- kursiv und leise. */
+.befund[data-vertrauen='keins'] .befund-wert {
+  font-style: italic;
+  color: var(--ink-schwach);
+  font-size: 0.85rem;
+}
+
+.befund-balken {
+  display: block;
+  height: 2px;
+  background: var(--ink-zart);
+  align-self: center;
+}
+
+.befund-balken i {
+  display: block;
+  height: 100%;
+  width: 0;
   background: var(--patina);
+  transition: width 220ms ease;
+}
+
+.befund[data-treffer='ja'] .befund-wert {
+  color: var(--gold);
+}
+
+.befund[data-treffer='ja'] .befund-balken i {
+  background: var(--gold);
 }
 
 .halteanweisung {

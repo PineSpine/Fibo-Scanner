@@ -7,8 +7,8 @@ import { GpuError } from './gpu/context.ts';
 import { createBoxCountingMetric } from './metrics/boxCounting.ts';
 import { createParastichenMetric } from './metrics/parastichen.ts';
 import type { Metric, Result } from './metrics/types.ts';
-import { createSmoother, createStabilityTracker } from './calibration/stability.ts';
-import { createAnzeige } from './ui/anzeige.ts';
+import { createSmoother, createStabilityTracker, type Smoother } from './calibration/stability.ts';
+import { createAnzeige, type Befund } from './ui/anzeige.ts';
 
 function frag<T extends Element>(wahl: string): T {
   const element = document.querySelector<T>(wahl);
@@ -25,21 +25,83 @@ const video = frag<HTMLVideoElement>('#video');
 const kanten = frag<HTMLCanvasElement>('#kanten');
 
 /**
- * Die Verfahren. Beide erfuellen dieselbe Schnittstelle, die Anzeige muss
- * keines von beiden kennen.
+ * Alle Verfahren laufen nebeneinander. Nichts wird umgeschaltet -- die App
+ * soll sagen, was im Bild steckt, nicht fragen, wonach man suchen will.
  *
- * Box-Counting laeuft auf jedem Motiv. Parastichen brauchen einen Bluetenstand,
- * frontal und formatfuellend -- deshalb ein eigener Modus und keine
- * Dauermessung nebenher.
+ * `jedesNte` staffelt die teureren: Box-Counting kostet 4,4 ms, die
+ * Spiralenzählung 5,3 ms auf dem Entwicklungsrechner. Beides bei jedem Bild
+ * wäre auf einem Telefon zu viel; die Spiralen ändern sich ohnehin langsamer
+ * als die Hand zittert.
+ *
+ * `stetig` sagt, ob der Wert geglättet werden darf. Eine Spiralenzahl ist
+ * ganzzahlig -- ein Mittel aus 34 und 55 wäre 44,5 und damit eine Zahl, die es
+ * nicht gibt.
  */
-const VERFAHREN: Record<'flaeche' | 'spirale', Metric> = {
-  flaeche: createBoxCountingMetric(),
-  spirale: createParastichenMetric(),
-};
-type Modus = keyof typeof VERFAHREN;
-let modus: Modus = 'flaeche';
-let metrik: Metric = VERFAHREN.flaeche;
-const glaetter = createSmoother();
+interface Verfahren {
+  metrik: Metric;
+  stetig: boolean;
+  /**
+   * Ob das Verfahren nur auf bestimmte Motive passt.
+   *
+   * Box-Counting hat zu jedem Bild etwas zu sagen -- eine Hauswand hat eine
+   * fraktale Dimension, ein Teller Suppe auch. Die Spiralenzählung schweigt
+   * fast immer und meldet sich nur beim Blütenstand. Wenn sie sich meldet,
+   * ist das die interessantere Auskunft, auch wenn das Dauerverfahren nominell
+   * ein Prozent sicherer ist. Sonst verdeckt das Häufige das Seltene.
+   */
+  spezifisch: boolean;
+  jedesNte: number;
+  glaetter: Smoother;
+  ergebnis: Result | null;
+  konfidenz: number;
+  wert: string | null;
+  hinweis: string;
+}
+
+const verfahren: Verfahren[] = [
+  {
+    metrik: createBoxCountingMetric(),
+    stetig: true,
+    spezifisch: false,
+    jedesNte: 1,
+    glaetter: createSmoother(),
+    ergebnis: null,
+    konfidenz: 0,
+    wert: null,
+    hinweis: '',
+  },
+  {
+    metrik: createParastichenMetric(),
+    stetig: false,
+    spezifisch: true,
+    jedesNte: 3,
+    glaetter: createSmoother(),
+    ergebnis: null,
+    konfidenz: 0,
+    wert: null,
+    hinweis: '',
+  },
+];
+
+/** Das Verfahren, das gerade groß dasteht. */
+let hauptId = verfahren[0]!.metrik.id;
+
+/**
+ * Wie viel besser ein anderes Verfahren sein muss, um den Hauptplatz zu
+ * übernehmen. Ohne diesen Abstand wechselt die Überschrift bei jedem Bild,
+ * sobald zwei Verfahren ähnlich sicher sind.
+ */
+const WECHSELVORSPRUNG = 0.15;
+
+/**
+ * Ab diesem Vertrauen bekommt ein spezifisches Verfahren den Hauptplatz, auch
+ * wenn ein Dauerverfahren höher steht. Nicht tiefer ansetzen -- sonst drängt
+ * sich eine Vermutung vor eine Messung.
+ */
+const SONDERBEFUND_AB = 0.6;
+
+let bildzaehler = 0;
+
 const stabilitaet = createStabilityTracker();
 const anzeige = createAnzeige();
 const wachhalter = createWachhalter();
@@ -139,7 +201,15 @@ async function starteWirklich(): Promise<void> {
 
   ansichtStart.hidden = true;
   ansichtMess.hidden = false;
-  glaetter.reset();
+  for (const v of verfahren) {
+    v.glaetter.reset();
+    v.ergebnis = null;
+    v.konfidenz = 0;
+    v.wert = null;
+    v.hinweis = '';
+  }
+  hauptId = verfahren[0]!.metrik.id;
+  bildzaehler = 0;
   stabilitaet.reset();
   belichtung.reset();
   belichtungszustand = 'pendelt';
@@ -194,41 +264,56 @@ function schleife(jetzt: number): void {
 
     belichtungPflegen(licht.eingependelt, licht.helligkeit, neuestes.timestamp);
 
-    const ergebnis = metrik.run(neuestes);
-    const konfidenz = metrik.confidence(ergebnis);
-    letztesErgebnis = ergebnis;
-
     // Während die Automatik noch regelt, wandert das Kantenbild mit der
     // Helligkeit statt mit dem Motiv. Solche Bilder gehören weder in die
     // Glättung noch in die Schwankungsrechnung -- sonst misst das
     // Zehn-Sekunden-Fenster die Einpendelphase mit.
     const zaehlt = licht.eingependelt;
-    // Geglaettet wird nur, wo eine stetige Groesse gemessen wird. Eine
-    // Spiralenzahl ist ganzzahlig; ein Mittelwert aus 34 und 55 waere 44,5 und
-    // damit eine Zahl, die es nicht gibt.
-    const stetig = ergebnis.label === undefined;
-    const geglaettet = zaehlt ? glaetter.push(ergebnis.value, konfidenz) : glaetter.value;
-    const bericht =
-      zaehlt && stetig && glaetter.settled
-        ? stabilitaet.push(geglaettet, neuestes.timestamp)
-        : stabilitaet.report;
+    bildzaehler++;
 
-    const zeigeWert = zaehlt && (stetig ? glaetter.settled : konfidenz > 0);
+    let bericht = stabilitaet.report;
+
+    for (const v of verfahren) {
+      if (bildzaehler % v.jedesNte !== 0 && v.ergebnis !== null) continue;
+
+      const ergebnis = v.metrik.run(neuestes);
+      const konfidenz = v.metrik.confidence(ergebnis);
+      v.ergebnis = ergebnis;
+      v.konfidenz = zaehlt ? konfidenz : 0;
+      v.hinweis = ergebnis.caveats[0] ?? '';
+
+      if (v.stetig) {
+        const geglaettet = zaehlt ? v.glaetter.push(ergebnis.value, konfidenz) : v.glaetter.value;
+        v.wert = zaehlt && v.glaetter.settled ? wertText({ ...ergebnis, value: geglaettet }) : null;
+        // Die Schwankungsmessung gehört zur fraktalen Dimension -- das ist die
+        // Größe, für die die Abnahmebedingung von M1 gilt.
+        if (zaehlt && v.glaetter.settled) {
+          bericht = stabilitaet.push(geglaettet, neuestes.timestamp);
+        }
+      } else {
+        // Ohne Vertrauen keine Zahl. Ein Verfahren, das nichts gefunden hat,
+        // soll das sagen und nicht raten.
+        v.wert = zaehlt && konfidenz > 0 ? wertText(ergebnis) : null;
+      }
+    }
+
+    const haupt = hauptWaehlen();
+    const neben = verfahren.filter((v) => v !== haupt);
+
+    // Die Halteanweisung erscheint genau dann, wenn sie etwas nützt: wenn die
+    // Spiralenzählung Struktur sieht, aber keine sauberen Familien.
+    const spirale = verfahren.find((v) => !v.stetig);
+    halteanweisung.hidden = !spirale?.hinweis.includes('formatfüllend');
+
+    letztesErgebnis = haupt.ergebnis;
 
     anzeige.zeige({
-      verfahren: metrik.label,
-      wert: zeigeWert
-        ? stetig
-          ? wertText({ ...ergebnis, value: geglaettet })
-          : wertText(ergebnis)
-        : null,
-      konfidenz: zaehlt ? konfidenz : 0,
+      haupt: alsBefund(haupt, licht.eingependelt),
+      neben: neben.map((v) => alsBefund(v, licht.eingependelt)),
       stabil: bericht.stable,
-      treffer: zeigeWert && (ergebnis.detail['treffer'] ?? 0) === 1,
-      hinweis: hinweisText(ergebnis, konfidenz, bericht.stable, licht.eingependelt),
-      schwankung: stetig && bericht.samples > 1 ? bericht.span : null,
+      schwankung: bericht.samples > 1 ? bericht.span : null,
       sekunden: bericht.seconds,
-      detail: ergebnis.detail,
+      detail: haupt.ergebnis?.detail ?? {},
       helligkeit: licht.helligkeit,
       messrate,
       belichtung: belichtungstext,
@@ -240,6 +325,44 @@ function schleife(jetzt: number): void {
     const kante = Math.min(kanten.clientWidth, kanten.clientHeight) || 512;
     pipeline.present(kante, kante);
   }
+}
+
+/**
+ * Wählt, welches Verfahren groß dasteht: das mit dem höchsten Vertrauen.
+ * Der Wechsel braucht einen Vorsprung, sonst springt die Überschrift hin und
+ * her, sobald zwei Verfahren gleich sicher sind.
+ */
+function hauptWaehlen(): Verfahren {
+  const bisher = verfahren.find((v) => v.metrik.id === hauptId) ?? verfahren[0]!;
+
+  // Ein spezifisches Verfahren, das etwas gefunden hat, geht vor. Es meldet
+  // sich selten; wenn doch, ist es der Grund, warum jemand die App aufmacht.
+  const sonder = verfahren
+    .filter((v) => v.spezifisch && v.konfidenz >= SONDERBEFUND_AB)
+    .sort((a, b) => b.konfidenz - a.konfidenz)[0];
+  if (sonder) {
+    hauptId = sonder.metrik.id;
+    return sonder;
+  }
+
+  let beste = bisher;
+  for (const v of verfahren) {
+    if (v === bisher) continue;
+    if (v.konfidenz > beste.konfidenz + (beste === bisher ? WECHSELVORSPRUNG : 0)) beste = v;
+  }
+  hauptId = beste.metrik.id;
+  return beste;
+}
+
+function alsBefund(v: Verfahren, eingependelt: boolean): Befund {
+  return {
+    id: v.metrik.id,
+    name: v.metrik.label,
+    wert: v.wert,
+    konfidenz: v.konfidenz,
+    treffer: v.wert !== null && (v.ergebnis?.detail['treffer'] ?? 0) === 1,
+    hinweis: eingependelt ? (zuDunkel ? 'zu dunkel – mehr Licht' : v.hinweis) : 'Belichtung pendelt sich ein …',
+  };
 }
 
 function wertText(ergebnis: Result): string {
@@ -294,7 +417,7 @@ function belichtungPflegen(eingependelt: boolean, helligkeit: number, jetzt: num
       // Das Bild ändert sich jetzt wieder; der bisherige Verlauf gehört zu
       // einer Belichtung, die es nicht mehr gibt.
       belichtung.reset();
-      glaetter.reset();
+      for (const v of verfahren) v.glaetter.reset();
       stabilitaet.reset();
       return;
     }
@@ -305,22 +428,6 @@ function belichtungPflegen(eingependelt: boolean, helligkeit: number, jetzt: num
   }
 }
 
-function hinweisText(
-  ergebnis: Result,
-  konfidenz: number,
-  stabil: boolean,
-  eingependelt: boolean,
-): string {
-  // Die Reihenfolge ist die Rangfolge: was der Nutzer zuerst beheben kann,
-  // steht zuerst. Eine noch laufende Belichtungsautomatik erklärt jeden
-  // anderen Vorbehalt gleich mit.
-  if (!eingependelt) return 'Belichtung pendelt sich ein …';
-  if (zuDunkel) return 'zu dunkel – mehr Licht oder heller belichten';
-  if (ergebnis.caveats.length > 0) return ergebnis.caveats[0]!;
-  if (konfidenz < 0.6) return 'Messung noch unsicher';
-  if (stabil) return 'Wert steht ruhig';
-  return 'ruhig halten';
-}
 
 frag<HTMLButtonElement>('#knopf-start').addEventListener('click', () => {
   void messungStarten();
@@ -329,33 +436,10 @@ frag<HTMLButtonElement>('#knopf-start').addEventListener('click', () => {
 frag<HTMLButtonElement>('#knopf-zurueck').addEventListener('click', messungBeenden);
 
 const halteanweisung = frag<HTMLElement>('#halteanweisung');
-const modusKnoepfe: Array<[Modus, HTMLButtonElement]> = [
-  ['flaeche', frag<HTMLButtonElement>('#modus-flaeche')],
-  ['spirale', frag<HTMLButtonElement>('#modus-spirale')],
-];
-
-function modusWaehlen(neu: Modus): void {
-  if (neu === modus) return;
-  modus = neu;
-  metrik = VERFAHREN[neu];
-  // Der alte Verlauf gehoert zum alten Verfahren. Ihn stehenzulassen hiesse,
-  // die Schwankung einer Groesse zu zeigen, die gar nicht mehr gemessen wird.
-  glaetter.reset();
-  stabilitaet.reset();
-  letztesErgebnis = null;
-  halteanweisung.hidden = neu !== 'spirale';
-  for (const [name, knopf] of modusKnoepfe) {
-    knopf.setAttribute('aria-pressed', String(name === neu));
-  }
-}
-
-for (const [name, knopf] of modusKnoepfe) {
-  knopf.addEventListener('click', () => modusWaehlen(name));
-}
 
 frag<HTMLButtonElement>('#knopf-erklaeren').addEventListener('click', () => {
   blattText.textContent = letztesErgebnis
-    ? metrik.explain(letztesErgebnis)
+    ? (verfahren.find((v) => v.metrik.id === hauptId) ?? verfahren[0]!).metrik.explain(letztesErgebnis)
     : 'Noch kein Messwert. Die Erklärung füllt sich, sobald etwas gemessen wurde.';
   blatt.hidden = false;
 });

@@ -1,14 +1,22 @@
-export interface AnzeigeZustand {
-  /** Name des laufenden Verfahrens, wie er über dem Wert steht. */
-  verfahren: string;
+export interface Befund {
+  id: string;
+  /** Name des Verfahrens, wie er dasteht. */
+  name: string;
   /** Fertig formatierter Messwert, oder null solange keiner belastbar ist. */
   wert: string | null;
   konfidenz: number;
-  stabil: boolean;
-  /** Ein Fibonacci-Paar wurde gefunden. Der einzige weitere Anlass für Gold. */
+  /** Ein Fibonacci-Paar wurde gefunden. Einer der beiden Anlässe für Gold. */
   treffer: boolean;
   /** Warum der Wert unsicher ist, oder was der Nutzer tun kann. */
   hinweis: string;
+}
+
+export interface AnzeigeZustand {
+  /** Was gerade am meisten hergibt. Steht groß über dem Bild. */
+  haupt: Befund;
+  /** Die übrigen Verfahren, klein darunter. */
+  neben: readonly Befund[];
+  stabil: boolean;
   schwankung: number | null;
   sekunden: number;
   /** Mittlere Bildhelligkeit 0..255. */
@@ -18,7 +26,7 @@ export interface AnzeigeZustand {
   belichtung: string;
   /** Wann der laufende Stand gebaut wurde. */
   stand: string;
-  /** Was das Verfahren selbst meldet. Wechselt mit dem Modus. */
+  /** Zwischenwerte des Hauptbefundes. */
   detail: Readonly<Record<string, number>>;
 }
 
@@ -44,6 +52,7 @@ const DETAIL_NAMEN: Readonly<Record<string, string>> = {
   peakMagnitude: 'Kantenbetrag, Spitze',
   scales: 'genutzte Skalen',
   side: 'Ausschnitt, Kante',
+  streuung: 'Struktur im Ring',
   links: 'Spiralen, eine Richtung',
   rechts: 'Spiralen, andere Richtung',
   schaerfeLinks: 'Gipfelschärfe, eine',
@@ -83,6 +92,7 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
   const verfahrenFeld = frag<HTMLElement>(wurzel, '#wert-name');
   const wertFeld = frag<HTMLOutputElement>(wurzel, '#wert');
   const hinweisFeld = frag<HTMLElement>(wurzel, '#wert-hinweis');
+  const nebenListe = frag<HTMLElement>(wurzel, '#nebenbefunde');
   const schwankungFeld = frag<HTMLElement>(wurzel, '#rand-schwankung');
   const konfidenzFeld = frag<HTMLElement>(wurzel, '#rand-konfidenz');
   const messrateFeld = frag<HTMLElement>(wurzel, '#rand-messrate');
@@ -92,22 +102,63 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
   const detailListe = frag<HTMLElement>(wurzel, '#rand-detail');
 
   let letzteDetailForm = '';
+  let letzteNebenForm = '';
+
+  /** Baut die Zeilen der Nebenbefunde, aber nur wenn sich die Auswahl ändert. */
+  function nebenAufbauen(neben: readonly Befund[]): void {
+    const form = neben.map((b) => b.id).join('|');
+    if (form === letzteNebenForm) return;
+    nebenListe.textContent = '';
+    for (const b of neben) {
+      const zeile = document.createElement('li');
+      zeile.className = 'befund';
+      zeile.dataset['id'] = b.id;
+      const name = document.createElement('span');
+      name.className = 'befund-name';
+      const wert = document.createElement('span');
+      wert.className = 'befund-wert';
+      const balken = document.createElement('span');
+      balken.className = 'befund-balken';
+      balken.append(document.createElement('i'));
+      zeile.append(name, wert, balken);
+      nebenListe.append(zeile);
+    }
+    letzteNebenForm = form;
+  }
 
   return {
     zeige(z: AnzeigeZustand): void {
-      verfahrenFeld.textContent = z.verfahren;
-      wertFeld.textContent = z.wert ?? '—';
-      schleier.dataset['vertrauen'] = vertrauensstufe(z.konfidenz);
+      verfahrenFeld.textContent = z.haupt.name;
+      wertFeld.textContent = z.haupt.wert ?? '—';
+      schleier.dataset['vertrauen'] = vertrauensstufe(z.haupt.konfidenz);
       schleier.dataset['stabil'] = z.stabil ? 'ja' : 'nein';
-      schleier.dataset['treffer'] = z.treffer ? 'ja' : 'nein';
+      schleier.dataset['treffer'] = z.haupt.treffer ? 'ja' : 'nein';
 
       // Solange kein Wert dasteht, erklärt der Hinweis allein, woran es liegt.
       // Steht einer da, gehört das Vertrauen davor -- es ist die Einschränkung,
       // die immer gilt, der Vorbehalt nur die von heute.
       hinweisFeld.textContent =
-        z.wert === null
-          ? z.hinweis
-          : `Vertrauen ${Math.round(z.konfidenz * 100)} %${z.hinweis ? ` · ${z.hinweis}` : ''}`;
+        z.haupt.wert === null
+          ? z.haupt.hinweis
+          : `Vertrauen ${Math.round(z.haupt.konfidenz * 100)} %${
+              z.haupt.hinweis ? ` · ${z.haupt.hinweis}` : ''
+            }`;
+
+      nebenAufbauen(z.neben);
+      for (const b of z.neben) {
+        const zeile = nebenListe.querySelector<HTMLElement>(`[data-id="${b.id}"]`);
+        if (!zeile) continue;
+        zeile.dataset['vertrauen'] = vertrauensstufe(b.konfidenz);
+        zeile.dataset['treffer'] = b.treffer ? 'ja' : 'nein';
+        const name = zeile.querySelector('.befund-name');
+        const wert = zeile.querySelector('.befund-wert');
+        if (name) name.textContent = b.name;
+        // Ohne Vertrauen keine Zahl, sondern der Grund. Eine Zahl ohne Deckung
+        // wäre genau die Behauptung, die die App nicht aufstellen soll.
+        if (wert) wert.textContent = b.wert ?? (b.hinweis || 'nichts gefunden');
+        const fuellung = zeile.querySelector<HTMLElement>('.befund-balken i');
+        if (fuellung) fuellung.style.width = `${Math.round(b.konfidenz * 100)}%`;
+      }
 
       if (z.schwankung === null) {
         schwankungFeld.textContent = '—';
@@ -123,7 +174,7 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
         else schwankungFeld.removeAttribute('data-treffer');
       }
 
-      konfidenzFeld.textContent = `${Math.round(z.konfidenz * 100)} %`;
+      konfidenzFeld.textContent = `${Math.round(z.haupt.konfidenz * 100)} %`;
       messrateFeld.textContent = z.messrate > 0 ? zahl(z.messrate, 0) : '—';
       belichtungFeld.textContent = z.belichtung;
       standFeld.textContent = z.stand;

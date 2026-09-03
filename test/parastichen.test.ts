@@ -6,6 +6,8 @@ import {
   parastichen,
 } from '../src/metrics/parastichen.ts';
 import { bluetenstand, bluetenstandOhneFibonacci } from './fixtures/phyllotaxis.ts';
+import { blur, branchingTree, brickWall, flatWall, fractalSurface } from './fixtures/scenes.ts';
+import { whiteNoise } from './fixtures/images.ts';
 import type { Frame, Result } from '../src/metrics/types.ts';
 import type { GrayImage } from './fixtures/images.ts';
 
@@ -110,5 +112,41 @@ describe('Das Verfahren sieht nicht überall Fibonacci', () => {
     const groesse = 512;
     const { r } = messe({ data: new Uint8Array(groesse * groesse).fill(180), width: groesse, height: groesse });
     expect(metrik.confidence(r)).toBe(0);
+  });
+});
+
+describe('Fremde Motive führen zu keiner Spiralaussage', () => {
+  // Der gefährlichste Fehler dieses Verfahrens ist nicht, Spiralen zu
+  // übersehen, sondern welche zu behaupten. Jedes Motiv, das kein Blütenstand
+  // ist, muss auf Vertrauen null enden -- mit einem Grund, der stimmt.
+  const faelle: Array<[string, () => GrayImage, RegExp]> = [
+    ['Backsteinwand', () => brickWall(), /zu wenig Struktur/],
+    ['glatte Wand', () => flatWall(), /zu wenig Struktur/],
+    ['Verzweigungsbaum', () => branchingTree(512, 11, 0.72), /nur eine Spiralfamilie/],
+    ['fraktale Fläche', () => fractalSurface(512, 0.5, 3), /nur eine Spiralfamilie/],
+    ['Bildrauschen', () => whiteNoise(), /keine deutlichen Spiralen/],
+  ];
+
+  for (const [name, mach, grund] of faelle) {
+    it(`${name}: kein Vertrauen, und der Grund stimmt`, () => {
+      const soft = blur(mach());
+      const { r } = messe(soft);
+      expect(metrik.confidence(r)).toBe(0);
+      expect(r.caveats[0]).toMatch(grund);
+    });
+  }
+
+  it('trennt Blütenstand und Nicht-Blütenstand mit Abstand', () => {
+    // Der Abstand ist die eigentliche Aussage: nicht dass die Schwelle passt,
+    // sondern dass zwischen beiden Gruppen viel Platz ist.
+    const blume = parastichen(alsFrame(blur(bluetenstand({ anzahl: 1200 }).bild)));
+    const wand = parastichen(alsFrame(blur(brickWall())));
+    const schwaecher = (x: ReturnType<typeof parastichen>): number =>
+      Math.min(x.schaerfeLinks, x.schaerfeRechts);
+
+    expect(schwaecher(blume)).toBeGreaterThan(100);
+    expect(schwaecher(wand)).toBeLessThan(15);
+    expect(blume.streuung).toBeGreaterThan(30);
+    expect(wand.streuung).toBeLessThan(10);
   });
 });

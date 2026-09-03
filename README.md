@@ -9,19 +9,27 @@ davon steht und wie man es anfasst.
 
 ## Stand
 
-**M1 — Box-Counting live: gebaut, im Labor kalibriert, im Wald noch nicht geprüft.**
+| | |
+|---|---|
+| **M1 — Box-Counting** | gebaut, kalibriert, läuft am Gerät |
+| **M4 — Parastichen** | gebaut, gegen Blütenstände nach Vogel kalibriert |
+| M2 — Spektralsteigung | nicht angefangen (die FFT dafür steht schon) |
+| M3 — Rotationssymmetrie | nicht angefangen |
+| M5 — Packung / Voronoi | nicht angefangen |
 
-Die Abnahmebedingung aus der Projektbeschreibung lautet: *der Wert schwankt bei
-ruhiger Hand über zehn Sekunden um weniger als 0,05*. Das lässt sich nur draußen
-mit einem Telefon feststellen, nicht hier. Die App misst diese Schwankung selbst
-und zeigt sie an — steht sie unter 0,05 und ist das Zehn-Sekunden-Fenster voll,
-färbt sich der Wert ockergolden. Das ist die einzige Stelle, an der Gold auftaucht.
+**Alle Verfahren laufen gleichzeitig.** Nichts wird umgeschaltet: Die App soll
+sagen, was im Bild steckt, nicht fragen, wonach man suchen will. Das Verfahren
+mit dem höchsten Vertrauen steht groß über dem Bild, die übrigen als Zeile
+darunter, jede mit einem Vertrauensbalken.
 
-Was im Labor geprüft ist: die Zählung trifft die Referenzbilder, sie hängt nicht
-davon ab, wo das Zählgitter liegt, und der Shader rechnet dasselbe wie die
-CPU-Referenz. Siehe [Kalibrierung](#kalibrierung).
+Ein spezifisches Verfahren geht dabei vor: Box-Counting hat zu jedem Bild etwas
+zu sagen, die Spiralenzählung schweigt fast immer. Meldet sie sich, ist das die
+interessantere Auskunft — sonst verdeckt das Häufige das Seltene.
 
-M2 bis M5 sind nicht angefangen.
+Die Abnahmebedingung für M1 lautet: *der Wert schwankt bei ruhiger Hand über
+zehn Sekunden um weniger als 0,05*. Die App misst diese Schwankung selbst und
+zeigt sie an. Sie und ein gefundenes Fibonacci-Paar sind die einzigen beiden
+Anlässe, bei denen die App Gold benutzt.
 
 ---
 
@@ -227,6 +235,7 @@ src/
   camera/      Kamerazugriff, Belichtungssperre
   gpu/         WebGL2-Kontext, Shader, Rechenkette mit asynchronem Rückweg
   metrics/     Messverfahren — reine Funktionen, keine Seiteneffekte
+               (boxCounting, parastichen, dazu fft, logPolar, sobel, regression)
   ui/          Anzeige
   calibration/ Glättung und Schwankungsmessung
 test/
@@ -284,6 +293,46 @@ Die Erwartungswerte aus der Projektbeschreibung — Backsteinwand 1,2 · Farnwed
 1,7 · Baumkrone 1,8 · Rauschen 2,0 — werden von den Szenen der Reihe nach
 getroffen. Die Bäume sind das brauchbarste synthetische Gegenstück zu Farn und
 Winterkrone; ihre Dimension steigt sauber mit dem Verzweigungsverhältnis.
+
+### Spiralenzählung (M4)
+
+Das Bild wird um seine Mitte in Log-Polar-Koordinaten gelegt — waagerecht der
+Winkel, senkrecht der Logarithmus des Radius — und fouriertransformiert. Eine
+Spiralanordnung ist selbstähnlich unter Drehung und Streckung; in diesen
+Koordinaten wird daraus eine Verschiebung, das Muster also periodisch. **Die
+Winkelfrequenz eines Spektralgipfels ist dann unmittelbar die Zahl der
+Spiralarme** — m Arme kreuzen jeden Kreis genau m-mal. Ganzzahlig von Natur aus,
+es muss nichts gerundet werden. Das Vorzeichen der Radiusfrequenz trennt die
+beiden Drehrichtungen.
+
+Kalibriert an Blütenständen nach Vogel (*Mathematical Biosciences* 44, 1979):
+
+| Blütchen | gemessen |
+|---|---|
+| 200 · 400 | 21/34 |
+| 700 | 34/55 |
+| 1200 · 2000 · 3000 | 55/89 |
+
+Welches Paar sichtbar wird, hängt vom Radius ab: die Blütchen bleiben gleich
+groß, der Umfang wächst nach außen. Deshalb wertet das Verfahren einen Kreisring
+aus, nicht die ganze Scheibe.
+
+**Der gefährlichere Fehler ist nicht, Spiralen zu übersehen, sondern welche zu
+behaupten.** Zwei Tore verhindern das, beide an den Vergleichsmotiven gemessen:
+
+| | Struktur im Ring | Gipfelhöhe |
+|---|---|---|
+| Blütenstand | 36 – 40 | **174 – 277** |
+| fraktale Fläche, Baum | 23 – 26 | 30 – 93 (beide Richtungen dieselbe Zahl) |
+| Backsteinwand | 6,5 | 8 |
+| glatte Wand | 6,1 | 7 |
+| Rauschen | 23 | 4 |
+
+Ein Bild muss überhaupt Struktur enthalten (sonst teilt man Rauschen durch
+Rauschen), und die schwächere der beiden Familien muss deutlich über dem
+Untergrund liegen. Ein Testfall prüft ausdrücklich, dass Backsteinwand, glatte
+Wand, Baum, fraktale Fläche und Rauschen auf Vertrauen null enden — jedes mit
+dem Grund, der wirklich zutrifft.
 
 ### Zwei Entscheidungen, die sich aus der Tabelle ergeben haben
 
@@ -347,11 +396,12 @@ Verbindung zu Google entsteht.
 
 ## Was als Nächstes ansteht
 
-1. **Veröffentlichen und installieren.** Repository anlegen, pushen, Pages auf
-   *GitHub Actions* stellen, am Telefon zum Startbildschirm hinzufügen. Erst
-   dann ist die App im Wald verfügbar.
-2. **M1 im Wald abnehmen.** Telefon, Farn, zehn Sekunden ruhig halten, auf die
-   Schwankungsanzeige sehen. Erst wenn die steht, lohnt M2.
+1. **M1 im Wald abnehmen.** Telefon, Farn, zehn Sekunden ruhig halten, auf die
+   Schwankungsanzeige sehen.
+2. **M4 an einem echten Blütenstand prüfen.** Sonnenblume, Kiefernzapfen,
+   Romanesco. Die Kalibrierung steht gegen gerechnete Muster; ein fotografierter
+   Zapfen ist unordentlicher. Weicht es ab, stehen die Zahlen im Messprotokoll:
+   Spiralen je Richtung, Gipfelschärfe, Struktur im Ring.
 3. Fällt die Schwankung nicht unter 0,05, sind die Verdächtigen in dieser
    Reihenfolge: nachregelnder Autofokus (die Belichtung ist bereits gesperrt,
    der Fokus nicht), Bewegungsunschärfe bei wenig Licht, und die Empfindlichkeit

@@ -48,7 +48,30 @@ export interface ParastichenRoh {
   treffer: boolean;
   /** Mittlere Amplitude im Suchbereich, als Bezugsgröße. */
   untergrund: number;
+  /**
+   * Wie viel Struktur überhaupt im abgerollten Ring steckt, in Graustufen.
+   * Auf einer leeren Wand geht das gegen null, und dann ist jedes Verhältnis
+   * von Gipfel zu Untergrund bedeutungslos -- man teilt Rauschen durch Rauschen.
+   */
+  streuung: number;
 }
+
+/**
+ * Ab wann ein Bild ueberhaupt genug Struktur hat, um darin nach Spiralen zu
+ * suchen. Gemessen an den Vergleichsmotiven: leere Wand 6,1 und Backsteinwand
+ * 6,5 gegen 36 bis 40 bei einem Bluetenstand.
+ */
+const STRUKTUR_MINDEST = 10;
+
+/**
+ * Ab welcher Gipfelhoehe -- im Verhaeltnis zum Untergrund -- eine Spiralfamilie
+ * als gefunden gilt. Gemessen: Backsteinwand 8, leere Wand 7, Rauschen 4,
+ * Baum und fraktale Flaeche 30 bis 93 (dort aber in beiden Drehrichtungen
+ * dieselbe Zahl, was ohnehin ausschliesst). Ein Bluetenstand erreicht 174 bis
+ * 277. Die Schwelle liegt mit Absicht deutlich unter dem Bluetenstand: ein
+ * fotografierter Zapfen ist unordentlicher als ein gerechneter.
+ */
+const GIPFEL_MINDEST = 30;
 
 interface Gipfel {
   arme: number;
@@ -86,6 +109,10 @@ export function parastichen(
     frame.height / 2,
     optionen.logPolar,
   );
+
+  let quadratsumme = 0;
+  for (const v of bild.daten) quadratsumme += v * v;
+  const streuung = Math.sqrt(quadratsumme / bild.daten.length);
 
   const spektrum = fft2(bild.daten, bild.nWinkel, bild.nRadius);
   const maxRadiusFrequenz = bild.nRadius / 2 - 1;
@@ -125,6 +152,7 @@ export function parastichen(
       besterPlus.arme !== besterMinus.arme &&
       benachbarteFibonacci(besterPlus.arme, besterMinus.arme),
     untergrund,
+    streuung,
   };
 }
 
@@ -152,7 +180,8 @@ export function createParastichenMetric(
       const gross = Math.max(roh.links, roh.rechts);
       const schwaechere = Math.min(roh.schaerfeLinks, roh.schaerfeRechts);
 
-      if (schwaechere < 3.5) caveats.push('keine deutlichen Spiralen – frontal und formatfüllend halten');
+      if (roh.streuung < STRUKTUR_MINDEST) caveats.push('zu wenig Struktur – kein Blütenstand im Bild');
+      else if (schwaechere < GIPFEL_MINDEST) caveats.push('keine deutlichen Spiralen – frontal und formatfüllend halten');
       else if (roh.links === roh.rechts) caveats.push('nur eine Spiralfamilie erkennbar');
       else if (!roh.treffer) caveats.push('Spiralen gezählt, aber kein Fibonacci-Paar');
 
@@ -160,6 +189,7 @@ export function createParastichenMetric(
         value: gross,
         label: `${klein}/${gross}`,
         detail: {
+          streuung: roh.streuung,
           links: roh.links,
           rechts: roh.rechts,
           schaerfeLinks: roh.schaerfeLinks,
@@ -179,10 +209,9 @@ export function createParastichenMetric(
       if (links === rechts) return 0;
 
       const schwaechere = Math.min(r.detail['schaerfeLinks'] ?? 0, r.detail['schaerfeRechts'] ?? 0);
-      // Gleichmäßiges Rauschen erreicht im Suchbereich Werte um 3,5. Erst
-      // darüber ist ein Gipfel ein Gipfel; ein echter Blütenstand liegt bei
-      // 90 bis 180, der Abstand ist also bequem.
-      return clamp01(ramp(3.5, 8, schwaechere));
+      const streuung = r.detail['streuung'] ?? 0;
+      // Zwei Tore, und beide müssen offen sein.
+      return clamp01(ramp(10, 22, streuung) * ramp(GIPFEL_MINDEST, 90, schwaechere));
     },
 
     explain(r: Result): string {

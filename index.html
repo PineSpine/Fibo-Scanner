@@ -43,10 +43,7 @@
       <!-- Messansicht -->
       <section class="ansicht" id="ansicht-mess" hidden>
         <header class="mess-kopf">
-          <div class="modi" role="group" aria-label="Verfahren">
-            <button class="modus" id="modus-flaeche" type="button" aria-pressed="true">Fläche</button>
-            <button class="modus" id="modus-spirale" type="button" aria-pressed="false">Spirale</button>
-          </div>
+          <h2 class="mess-titel">Befund</h2>
           <button class="knopf knopf-klein" id="knopf-zurueck" type="button">Beenden</button>
         </header>
 
@@ -71,6 +68,10 @@
             <p class="wert-hinweis" id="wert-hinweis">Kamera startet …</p>
           </div>
         </div>
+
+        <!-- Was sonst noch gemessen wurde. Alles läuft gleichzeitig; hier steht,
+             was es nicht auf den großen Platz geschafft hat. -->
+        <ul class="befunde" id="nebenbefunde"></ul>
 
         <div class="knoepfe">
           <button class="knopf" id="knopf-erklaeren" type="button">Was heißt das?</button>
