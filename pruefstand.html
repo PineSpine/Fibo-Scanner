@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fibo-Scanner · Prüfstand</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 2rem 1.5rem;
+        background: #e6e1ce;
+        color: #241e1a;
+        font: 15px/1.5 'EB Garamond', Georgia, serif;
+      }
+      h1 {
+        font-size: 1.3rem;
+        font-weight: 400;
+        font-style: italic;
+        margin: 0 0 0.3rem;
+      }
+      p.hinweis {
+        margin: 0 0 1.5rem;
+        color: rgba(36, 30, 26, 0.55);
+        max-width: 44rem;
+      }
+      table {
+        border-collapse: collapse;
+        font-variant-numeric: lining-nums tabular-nums;
+      }
+      th,
+      td {
+        border-bottom: 1px dotted rgba(36, 30, 26, 0.25);
+        padding: 0.3rem 0.9rem 0.3rem 0;
+        text-align: right;
+      }
+      th {
+        text-align: left;
+        font-weight: 400;
+        color: rgba(36, 30, 26, 0.6);
+      }
+      td.ja {
+        color: #4e7a6b;
+      }
+      td.nein {
+        color: #b8862f;
+      }
+      canvas {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Prüfstand: Shader gegen CPU-Referenz</h1>
+    <p class="hinweis">
+      Ein Shader lässt sich nicht in einem Testlauf ohne Browser prüfen. Diese Seite schickt die
+      Referenzbilder durch dieselbe Rechenkette wie das Kamerabild und vergleicht das Ergebnis mit
+      <code>metrics/sobel.ts</code>. Verglichen wird das Kantenbild der Grafikkarte mit dem
+      CPU-Sobel <em>desselben</em> Graubilds — so wird der Sobel-Durchgang geprüft und nicht das
+      Verkleinern. Aufruf: <code>npm run dev</code>, dann <code>/pruefstand.html</code>.
+    </p>
+    <table id="tafel">
+      <thead>
+        <tr>
+          <th>Bild</th>
+          <th>Δ mittel</th>
+          <th>Δ größt</th>
+          <th>≥ 99 % gleich</th>
+          <th>D (GPU)</th>
+          <th>D (CPU)</th>
+          <th>Δ D</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <canvas id="quelle" width="512" height="512"></canvas>
+    <canvas id="rechen"></canvas>
+    <script type="module" src="/src/pruefstand.ts"></script>
+  </body>
+</html>

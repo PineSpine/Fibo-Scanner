@@ -1,0 +1,9 @@
+# Im Repository stehen Zeilenenden als LF, egal auf welchem System gearbeitet
+# wird. Ohne das wandert bei jedem Wechsel zwischen Windows und dem Bau-Runner
+# die halbe Datei durch den Vergleich.
+* text=auto eol=lf
+
+# Binaerdateien bleiben unangetastet.
+*.png binary
+*.jpg binary
+*.woff2 binary

@@ -1,0 +1,16 @@
+{
+  "name": "Fibo-Scanner",
+  "short_name": "Fibo",
+  "description": "Misst Muster in der Natur: fraktale Dimension per Handykamera.",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E6E1CE",
+  "theme_color": "#E6E1CE",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

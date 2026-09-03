@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.DS_Store
+
+# Referenzbilder werden erzeugt, nicht eingecheckt: npm run fixtures
+test/fixtures/*.png
+
+# Nur ein Zwischenprodukt fuer Hoster, die einen Ordner entgegennehmen
+fibo-scanner-dist.zip
+
+# Fremde Bilder.
+#
+# Die Pins im Moodboard stammen von anderen Leuten. Sie liegen hier fuer die
+# Gestaltungsarbeit, aber sie in ein oeffentliches Repository zu schieben hiesse,
+# sie zu veroeffentlichen -- und aus der Git-Historie bekommt man sie nicht
+# ohne Weiteres wieder heraus. Der lokale Ordner bleibt, wo er ist; er wird nur
+# nicht mitgeschickt.
+#
+# Soll das Repository privat bleiben, genuegt es, diese Zeile zu loeschen.
+docs/moodboard/

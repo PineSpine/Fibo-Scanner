@@ -1,0 +1,28 @@
+{
+  "name": "fibo-scanner",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "fixtures": "node scripts/write-fixtures.ts",
+    "kalibrierung": "node scripts/kalibrierung.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
+    "dev:https": "node scripts/dev-https.ts",
+    "preview:https": "node scripts/preview-https.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "typescript": "^5.6.3",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

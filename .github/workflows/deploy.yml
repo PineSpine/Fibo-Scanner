@@ -1,0 +1,64 @@
+name: Bauen und auf GitHub Pages veröffentlichen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Zwei Veröffentlichungen gleichzeitig ergeben keinen Sinn. Laufende abbrechen,
+# die neuere gewinnt.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  bauen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # Die Kalibrierung gegen die Referenzbilder ist Bedingung, nicht Kür:
+      # eine Änderung an metrics/, die Sierpinski oder Koch verfehlt, soll gar
+      # nicht erst auf dem Telefon landen.
+      - name: Tests
+        run: npm test
+
+      - name: Basispfad bestimmen
+        run: |
+          # Eine Projektseite liegt unter /<repo>/, eine Nutzer- oder
+          # Organisationsseite (<name>.github.io) unter /. Ohne den richtigen
+          # Basispfad sucht die Seite ihre Schriften an der falschen Stelle.
+          if [[ "${{ github.event.repository.name }}" == *.github.io ]]; then
+            echo "FIBO_BASE=/" >> "$GITHUB_ENV"
+          else
+            echo "FIBO_BASE=/${{ github.event.repository.name }}/" >> "$GITHUB_ENV"
+          fi
+
+      - name: Bauen
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  veroeffentlichen:
+    needs: bauen
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.veroeffentlichung.outputs.page_url }}
+    steps:
+      - id: veroeffentlichung
+        uses: actions/deploy-pages@v4

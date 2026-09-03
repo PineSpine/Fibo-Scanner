@@ -1,0 +1,483 @@
+/*
+ * Der Schnörkel steckt in der Hülle, nie im Messwert.
+ * Titel, Rahmen, Ornamente dürfen schwelgen; die Zahl über dem Kamerabild
+ * bleibt nüchtern und sofort lesbar.
+ */
+
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('/fonts/eb-garamond.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('/fonts/eb-garamond-italic.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Italianno';
+  src: url('/fonts/italianno.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --ink: #241e1a;
+  --paper: #e6e1ce;
+  --patina: #4e7a6b;
+  --gold: #b8862f;
+  --veil: rgba(36, 30, 26, 0.55);
+
+  --ink-schwach: rgba(36, 30, 26, 0.55);
+  --ink-zart: rgba(36, 30, 26, 0.22);
+
+  --serif: 'EB Garamond', 'Iowan Old Style', Palatino, Georgia, serif;
+  --schreib: 'Italianno', 'EB Garamond', cursive;
+
+  --rand: clamp(1.1rem, 5vw, 2.2rem);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--paper);
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: clamp(1rem, 0.95rem + 0.4vw, 1.15rem);
+  line-height: 1.55;
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: max(var(--rand), env(safe-area-inset-top)) var(--rand)
+    max(var(--rand), env(safe-area-inset-bottom));
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------- Ornament */
+
+/*
+ * Variante 2 aus der Projektbeschreibung: Randornament, unten rechts
+ * angeschnitten, sodass die Ranken in den Viewport hineinwachsen. Es liegt
+ * hinter allem und stört die Messanzeige nicht. Die Zeichnung ist freigestellt,
+ * die Tinte steckt im Alphakanal -- deshalb als Maske und nicht als Bild, so
+ * nimmt sie die Tintenfarbe an.
+ */
+.ornament {
+  position: fixed;
+  right: -18vmin;
+  bottom: -14vmin;
+  width: min(78vmin, 30rem);
+  height: auto;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.13;
+  background: var(--ink);
+  -webkit-mask-image: url('/ornament.png');
+  mask-image: url('/ornament.png');
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  aspect-ratio: 1080 / 1350;
+}
+
+/* ------------------------------------------------------------------ Schrift */
+
+.kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ink-schwach);
+}
+
+.titel {
+  font-family: var(--schreib);
+  /* Nie unter 32 px -- darunter zerfallen die Schwünge. */
+  font-size: clamp(4rem, 22vw, 7.5rem);
+  font-weight: 400;
+  line-height: 0.82;
+  margin: 0.1em 0 0.05em;
+  letter-spacing: 0.01em;
+}
+
+.unterzeile {
+  margin: 0;
+  font-style: italic;
+  color: var(--ink-schwach);
+}
+
+.linie {
+  border: 0;
+  border-top: 1px solid var(--ink-zart);
+  margin: 0.9rem 0;
+}
+
+.prosa {
+  margin: 1.6rem 0;
+}
+
+.prosa p {
+  margin: 0 0 0.9rem;
+}
+
+.zurueckhaltung {
+  font-style: italic;
+  color: var(--ink-schwach);
+}
+
+.fussnote {
+  margin-top: 1.4rem;
+  font-size: 0.85rem;
+  color: var(--ink-schwach);
+}
+
+.fehler {
+  margin: 1rem 0 0;
+  padding: 0.7rem 0.9rem;
+  border-left: 2px solid var(--gold);
+  background: rgba(184, 134, 47, 0.08);
+  font-size: 0.92rem;
+}
+
+/* ------------------------------------------------------------------ Knöpfe */
+
+.knopf {
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--ink-zart);
+  border-radius: 2px;
+  padding: 0.55rem 1.1rem;
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.knopf:hover,
+.knopf:focus-visible {
+  border-color: var(--patina);
+  color: var(--patina);
+}
+
+.knopf[aria-pressed='true'] {
+  border-color: var(--patina);
+  color: var(--patina);
+  background: rgba(78, 122, 107, 0.09);
+}
+
+.knopf-gross {
+  display: block;
+  width: 100%;
+  padding: 0.9rem 1rem;
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+  text-transform: lowercase;
+}
+
+.knopf-klein {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.knoepfe {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 1.2rem;
+}
+
+/* ------------------------------------------------------------- Messansicht */
+
+.mess-kopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.7rem;
+  border-bottom: 1px solid var(--ink-zart);
+  padding-bottom: 0.5rem;
+}
+
+.mess-titel {
+  margin: 0;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+}
+
+/*
+ * Die Platte ist quadratisch, und das Video liegt mit object-fit: cover darin.
+ * Damit zeigt der Sucher genau den mittigen quadratischen Ausschnitt, den auch
+ * die Rechenkette auswertet. Ein Vollbild mit Überlagerung sähe größer aus,
+ * würde aber behaupten, mehr zu messen als gemessen wird.
+ */
+.platte {
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+  overflow: hidden;
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+}
+
+.platte video,
+.platte canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ecken {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.ecke {
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 0.8;
+  stroke-linecap: round;
+  opacity: 0.75;
+  vector-effect: non-scaling-stroke;
+}
+
+/*
+ * Der Schleier liegt als Schild im Rahmen, nicht bündig an der Kante: so
+ * bleiben alle vier Eckschnörkel sichtbar, und die Zahl sitzt auf dem Bild
+ * statt es abzuschneiden.
+ */
+.schleier {
+  position: absolute;
+  left: 0.6rem;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  padding: 0.6rem 0.9rem 0.7rem;
+  border-radius: 1px;
+  background: var(--veil);
+  backdrop-filter: blur(2px);
+  color: var(--paper);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 1rem;
+}
+
+.wert-name {
+  margin: 0;
+  grid-column: 1;
+  font-size: 0.72rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+/*
+ * Der Hauptwert. Tabellenziffern, weil die Anzeige bei dreißig Bildern je
+ * Sekunde sonst in der Breite zappelt. Keine Schreibschrift, kein Schmuck.
+ */
+.wert {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: clamp(3rem, 15vw, 4.4rem);
+  line-height: 0.9;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -0.01em;
+  align-self: center;
+}
+
+.wert-hinweis {
+  grid-column: 1;
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  font-style: italic;
+  opacity: 0.85;
+  min-height: 1.3em;
+}
+
+/* Niedriges Vertrauen wird gezeigt, nicht versteckt. */
+.schleier[data-vertrauen='gering'] .wert {
+  opacity: 0.42;
+}
+
+.schleier[data-vertrauen='keins'] .wert {
+  opacity: 0.28;
+}
+
+/*
+ * Der eine orchestrierte Moment: wird der Wert stabil, wächst er sanft in
+ * Position. Sonst bewegt sich nichts.
+ */
+.schleier[data-stabil='ja'] .wert {
+  color: var(--gold);
+  transform: scale(1.06);
+  transform-origin: right center;
+  transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1), color 620ms ease;
+}
+
+.schleier .wert {
+  transform: scale(1);
+  transition: transform 320ms ease, color 320ms ease;
+}
+
+.deutung {
+  margin: 0.9rem 0 0;
+  min-height: 3em;
+  font-style: italic;
+  color: var(--ink-schwach);
+}
+
+/* --------------------------------------------------------------- Marginalie */
+
+.rand {
+  margin: 1.1rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--ink-zart);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.35rem 1.2rem;
+  font-size: 0.85rem;
+}
+
+.rand-paar {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  border-bottom: 1px dotted var(--ink-zart);
+  padding-bottom: 0.15rem;
+}
+
+.rand dt {
+  color: var(--ink-schwach);
+  letter-spacing: 0.02em;
+}
+
+.rand dd {
+  margin: 0;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.rand dd[data-treffer='ja'] {
+  color: var(--gold);
+}
+
+/* ---------------------------------------------------------------- Erklärung */
+
+.blatt {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  overflow-y: auto;
+  background: var(--paper);
+  padding: max(var(--rand), env(safe-area-inset-top)) var(--rand)
+    max(var(--rand), env(safe-area-inset-bottom));
+}
+
+.blatt-inhalt {
+  max-width: 34rem;
+  margin: 0 auto;
+}
+
+/*
+ * Kein Italianno: "Box-Counting" ist ein Fachbegriff, und Schreibschrift ist
+ * dem Titel der App vorbehalten. Der Styleguide ist an dieser Stelle
+ * unmissverständlich, und er hat recht -- Schwünge über einem Bindestrichwort
+ * liest niemand.
+ */
+.blatt-titel {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 1.6rem;
+  font-weight: 400;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+.blatt h3 {
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.05rem;
+  letter-spacing: 0.03em;
+  margin: 1.6rem 0 0.4rem;
+}
+
+.blatt p {
+  margin: 0 0 0.9rem;
+}
+
+table.tafel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+table.tafel th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink-schwach);
+}
+
+table.tafel th,
+table.tafel td {
+  border-bottom: 1px dotted var(--ink-zart);
+  padding: 0.28rem 0;
+}
+
+table.tafel td {
+  text-align: right;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.glossar dt {
+  font-style: italic;
+  margin-top: 0.6rem;
+}
+
+.glossar dd {
+  margin: 0;
+  color: var(--ink-schwach);
+}
+
+.blatt .knopf {
+  margin-top: 1.8rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -1,0 +1,9 @@
+Italianno und EB Garamond stehen unter der SIL Open Font License 1.1.
+Bezogen von fonts.google.com, hier liegen nur die Latin-Teilmengen.
+
+  https://openfontlicense.org/
+  https://fonts.google.com/specimen/Italianno
+  https://fonts.google.com/specimen/EB+Garamond
+
+Selbst gehostet, damit die App ohne Netz laeuft und beim Aufruf keine
+Verbindung zu Google entsteht.
