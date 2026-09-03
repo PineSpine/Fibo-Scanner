@@ -87,13 +87,25 @@ void main() {
   outColor = vec4(at(p), mag, 0.0, 1.0);
 }`;
 
-/** Nur fuer die Kontrollansicht: das Kantenbild als Graustufen zeigen. */
+/**
+ * Zeichnet nach, was gezaehlt wurde: genau die Pixel oberhalb des
+ * Schwellwerts, in Gruenspan, alles andere durchsichtig.
+ *
+ * Der Schwellwert kommt als Uniform von der CPU -- er stammt aus Otsu und ist
+ * derselbe, mit dem die Kaestchen gezaehlt wurden. Ohne ihn zeigte die
+ * Ueberlagerung ein anderes Bild als die Messung, und das waere schlimmer als
+ * gar keine Ueberlagerung.
+ */
 export const PRESENT_SHADER = `#version 300 es
 precision highp float;
 in vec2 vUv;
 uniform sampler2D uEdges;
+uniform float uSchwelle;
+uniform vec3 uFarbe;
 out vec4 outColor;
 void main() {
   float m = texture(uEdges, vUv).g;
-  outColor = vec4(vec3(m), 1.0);
+  // Weicher Einsatz knapp unter der Schwelle, damit die Linien nicht ausfransen.
+  float a = smoothstep(uSchwelle - 0.02, uSchwelle + 0.02, m);
+  outColor = vec4(uFarbe * a, a);
 }`;

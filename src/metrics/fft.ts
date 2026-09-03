@@ -122,6 +122,17 @@ export function fft2(daten: Float64Array, breite: number, hoehe: number): Spektr
   return { re, im, breite, hoehe };
 }
 
+/**
+ * Argument eines Koeffizienten. Sagt, wo im Bild das Muster liegt -- nötig, um
+ * das Gefundene an der richtigen Stelle nachzuzeichnen statt irgendwo.
+ */
+export function winkel(s: Spektrum2D, kx: number, ky: number): number {
+  const x = ((kx % s.breite) + s.breite) % s.breite;
+  const y = ((ky % s.hoehe) + s.hoehe) % s.hoehe;
+  const i = y * s.breite + x;
+  return Math.atan2(s.im[i]!, s.re[i]!);
+}
+
 /** Betrag eines Koeffizienten. Negative Indizes zählen vom Ende her. */
 export function betrag(s: Spektrum2D, kx: number, ky: number): number {
   const x = ((kx % s.breite) + s.breite) % s.breite;

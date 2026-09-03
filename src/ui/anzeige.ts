@@ -117,10 +117,12 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
       name.className = 'befund-name';
       const wert = document.createElement('span');
       wert.className = 'befund-wert';
+      const vertrauen = document.createElement('span');
+      vertrauen.className = 'befund-vertrauen';
       const balken = document.createElement('span');
       balken.className = 'befund-balken';
       balken.append(document.createElement('i'));
-      zeile.append(name, wert, balken);
+      zeile.append(name, wert, vertrauen, balken);
       nebenListe.append(zeile);
     }
     letzteNebenForm = form;
@@ -156,6 +158,13 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
         // Ohne Vertrauen keine Zahl, sondern der Grund. Eine Zahl ohne Deckung
         // wäre genau die Behauptung, die die App nicht aufstellen soll.
         if (wert) wert.textContent = b.wert ?? (b.hinweis || 'nichts gefunden');
+        const vertrauen = zeile.querySelector('.befund-vertrauen');
+        if (vertrauen) {
+          vertrauen.textContent =
+            b.wert === null
+              ? 'nichts gefunden'
+              : `Vertrauen ${Math.round(b.konfidenz * 100)} %${b.hinweis ? ` · ${b.hinweis}` : ''}`;
+        }
         const fuellung = zeile.querySelector<HTMLElement>('.befund-balken i');
         if (fuellung) fuellung.style.width = `${Math.round(b.konfidenz * 100)}%`;
       }

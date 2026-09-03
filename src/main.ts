@@ -5,10 +5,13 @@ import { createWachhalter } from './camera/wakeLock.ts';
 import { createPipeline, type Pipeline } from './gpu/pipeline.ts';
 import { GpuError } from './gpu/context.ts';
 import { createBoxCountingMetric } from './metrics/boxCounting.ts';
-import { createParastichenMetric } from './metrics/parastichen.ts';
+import { createParastichenMetric, parastichen } from './metrics/parastichen.ts';
 import type { Metric, Result } from './metrics/types.ts';
 import { createSmoother, createStabilityTracker, type Smoother } from './calibration/stability.ts';
 import { createAnzeige, type Befund } from './ui/anzeige.ts';
+import { createNachzeichner } from './ui/nachzeichnung.ts';
+import { LOGPOLAR_STANDARD } from './metrics/logPolar.ts';
+import type { ParastichenRoh } from './metrics/parastichen.ts';
 
 function frag<T extends Element>(wahl: string): T {
   const element = document.querySelector<T>(wahl);
@@ -56,6 +59,8 @@ interface Verfahren {
   konfidenz: number;
   wert: string | null;
   hinweis: string;
+  /** Nur bei der Spiralenzählung: die Familien zum Nachzeichnen. */
+  roh?: ParastichenRoh;
 }
 
 const verfahren: Verfahren[] = [
@@ -106,6 +111,7 @@ const stabilitaet = createStabilityTracker();
 const anzeige = createAnzeige();
 const wachhalter = createWachhalter();
 const belichtung = createBelichtungswaechter();
+const nachzeichner = createNachzeichner(frag<SVGSVGElement>('#nachzeichnung'));
 
 let kamera: CameraHandle | null = null;
 let pipeline: Pipeline | null = null;
@@ -278,6 +284,7 @@ function schleife(jetzt: number): void {
 
       const ergebnis = v.metrik.run(neuestes);
       const konfidenz = v.metrik.confidence(ergebnis);
+      if (v.spezifisch) v.roh = parastichen(neuestes);
       v.ergebnis = ergebnis;
       v.konfidenz = zaehlt ? konfidenz : 0;
       v.hinweis = ergebnis.caveats[0] ?? '';
@@ -300,10 +307,17 @@ function schleife(jetzt: number): void {
     const haupt = hauptWaehlen();
     const neben = verfahren.filter((v) => v !== haupt);
 
-    // Die Halteanweisung erscheint genau dann, wenn sie etwas nützt: wenn die
-    // Spiralenzählung Struktur sieht, aber keine sauberen Familien.
+    // Nachgezeichnet wird nur, was auch gefunden wurde.
     const spirale = verfahren.find((v) => !v.stetig);
-    halteanweisung.hidden = !spirale?.hinweis.includes('formatfüllend');
+    if (spirale && spirale.konfidenz >= 0.6 && spirale.roh) {
+      nachzeichner.spiralen(
+        spirale.roh.familien,
+        (spirale.ergebnis?.detail['treffer'] ?? 0) === 1,
+        LOGPOLAR_STANDARD,
+      );
+    } else {
+      nachzeichner.loeschen();
+    }
 
     letztesErgebnis = haupt.ergebnis;
 
@@ -323,7 +337,10 @@ function schleife(jetzt: number): void {
 
   if (zeigeKanten) {
     const kante = Math.min(kanten.clientWidth, kanten.clientHeight) || 512;
-    pipeline.present(kante, kante);
+    // Dieselbe Schwelle, mit der gezaehlt wurde -- der Shader rechnet in
+    // Anteilen von eins, die Metrik in Graustufen.
+    const schwelle = (verfahren[0]?.ergebnis?.detail['threshold'] ?? 20) / 255;
+    pipeline.present(kante, kante, schwelle);
   }
 }
 
@@ -435,8 +452,6 @@ frag<HTMLButtonElement>('#knopf-start').addEventListener('click', () => {
 
 frag<HTMLButtonElement>('#knopf-zurueck').addEventListener('click', messungBeenden);
 
-const halteanweisung = frag<HTMLElement>('#halteanweisung');
-
 frag<HTMLButtonElement>('#knopf-erklaeren').addEventListener('click', () => {
   blattText.textContent = letztesErgebnis
     ? (verfahren.find((v) => v.metrik.id === hauptId) ?? verfahren[0]!).metrik.explain(letztesErgebnis)
@@ -452,9 +467,8 @@ const kantenKnopf = frag<HTMLButtonElement>('#knopf-kanten');
 kantenKnopf.addEventListener('click', () => {
   zeigeKanten = !zeigeKanten;
   kantenKnopf.setAttribute('aria-pressed', String(zeigeKanten));
-  kantenKnopf.textContent = zeigeKanten ? 'Kamerabild zeigen' : 'Kantenbild zeigen';
+  kantenKnopf.textContent = zeigeKanten ? 'Kanten verbergen' : 'Kanten zeigen';
   kanten.hidden = !zeigeKanten;
-  video.style.visibility = zeigeKanten ? 'hidden' : 'visible';
 });
 
 // Kamera und Grafikkontext freigeben, wenn die App in den Hintergrund geht.

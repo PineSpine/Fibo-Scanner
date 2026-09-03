@@ -47,13 +47,19 @@
           <button class="knopf knopf-klein" id="knopf-zurueck" type="button">Beenden</button>
         </header>
 
-        <p class="halteanweisung" id="halteanweisung" hidden>
-          Blütenstand frontal und formatfüllend in den Rahmen.
-        </p>
+        <!-- Eine Zeile, immer dieselbe. Was für ein Motiv gerade fehlt, sagen
+             die Befunde selbst -- eine Anweisung, die sich ständig ändert,
+             liest niemand. -->
+        <p class="anleitung">Kamera auf ein Muster halten: Farn, Rinde, Mauerwerk, Zapfen.</p>
 
         <div class="platte">
           <video id="video" playsinline muted autoplay></video>
           <canvas id="kanten" hidden></canvas>
+
+          <!-- Was gefunden wurde, ins Bild gelegt: die Spiralarme dort, wo sie
+               gemessen wurden. Leer, solange nichts gefunden ist. -->
+          <svg class="nachzeichnung" id="nachzeichnung" viewBox="0 0 100 100"
+               preserveAspectRatio="none" aria-hidden="true"></svg>
 
           <svg class="ecken" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
             <path class="ecke" d="M2 14 C2 6 6 2 14 2" />
@@ -76,7 +82,7 @@
         <div class="knoepfe">
           <button class="knopf" id="knopf-erklaeren" type="button">Was heißt das?</button>
           <button class="knopf" id="knopf-kanten" type="button" aria-pressed="false">
-            Kantenbild
+            Kanten zeigen
           </button>
         </div>
 

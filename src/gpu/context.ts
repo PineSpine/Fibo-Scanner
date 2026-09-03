@@ -2,7 +2,10 @@ export class GpuError extends Error {}
 
 export function createContext(canvas: HTMLCanvasElement): WebGL2RenderingContext {
   const gl = canvas.getContext('webgl2', {
-    alpha: false,
+    // Durchsichtig, damit die Kantenzeichnung ueber dem Kamerabild liegen kann
+    // statt es zu ersetzen.
+    alpha: true,
+    premultipliedAlpha: true,
     antialias: false,
     depth: false,
     stencil: false,

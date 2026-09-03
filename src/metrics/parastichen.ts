@@ -1,5 +1,5 @@
 import type { Frame, Metric, Result } from './types.ts';
-import { betrag, fft2 } from './fft.ts';
+import { betrag, fft2, winkel } from './fft.ts';
 import { LOGPOLAR_STANDARD, logPolar, type LogPolarOptionen } from './logPolar.ts';
 
 export interface ParastichenOptionen {
@@ -44,6 +44,8 @@ export interface ParastichenRoh {
   /** Gipfelhöhe im Verhältnis zum Untergrund. Über 3 ist deutlich. */
   schaerfeLinks: number;
   schaerfeRechts: number;
+  /** Beide Familien vollständig, zum Nachzeichnen im Bild. */
+  familien: readonly [Spiralfamilie, Spiralfamilie];
   /** Beide Zahlen sind in der Fibonacci-Folge benachbart. */
   treffer: boolean;
   /** Mittlere Amplitude im Suchbereich, als Bezugsgröße. */
@@ -73,9 +75,24 @@ const STRUKTUR_MINDEST = 10;
  */
 const GIPFEL_MINDEST = 30;
 
-interface Gipfel {
+/**
+ * Eine gefundene Spiralfamilie, so vollständig, dass sie sich nachzeichnen
+ * lässt.
+ *
+ * In Log-Polar-Koordinaten liegt die Familie auf den Linien konstanter Phase
+ * von `arme · Winkel + radiusFrequenz · Radiusanteil`. Wer `phase` kennt, kann
+ * die Spiralen genau dort ins Kamerabild legen, wo sie gemessen wurden -- und
+ * nicht bloß irgendwo hin.
+ */
+export interface Spiralfamilie {
+  /** Zahl der Arme. Zugleich die Winkelfrequenz im Spektrum. */
   arme: number;
-  staerke: number;
+  /** Frequenz über den Logarithmus des Radius. Ihr Vorzeichen ist die Drehrichtung. */
+  radiusFrequenz: number;
+  /** Lage der Arme, aus dem Argument des Fourierkoeffizienten. */
+  phase: number;
+  /** Gipfelhöhe im Verhältnis zum Untergrund. */
+  schaerfe: number;
 }
 
 /**
@@ -120,34 +137,54 @@ export function parastichen(
 
   let summe = 0;
   let anzahl = 0;
-  let besterPlus: Gipfel = { arme: 0, staerke: 0 };
-  let besterMinus: Gipfel = { arme: 0, staerke: 0 };
+  const leer = (): Spiralfamilie => ({ arme: 0, radiusFrequenz: 0, phase: 0, schaerfe: 0 });
+  let besterPlus = leer();
+  let besterMinus = leer();
+  let staerkePlus = 0;
+  let staerkeMinus = 0;
 
   for (let m = optionen.minArme; m <= obergrenze; m++) {
     let plus = 0;
     let minus = 0;
+    let plusS = 0;
+    let minusS = 0;
     // Die Radiusfrequenz null bleibt außen vor: sie beschreibt Speichen, die
     // gerade nach außen laufen, also gar keine Spirale.
-    for (let s = 1; s <= maxRadiusFrequenz; s++) {
-      const a = betrag(spektrum, m, s);
-      const b = betrag(spektrum, m, -s);
-      if (a > plus) plus = a;
-      if (b > minus) minus = b;
+    for (let k = 1; k <= maxRadiusFrequenz; k++) {
+      const a = betrag(spektrum, m, k);
+      const b = betrag(spektrum, m, -k);
+      if (a > plus) {
+        plus = a;
+        plusS = k;
+      }
+      if (b > minus) {
+        minus = b;
+        minusS = -k;
+      }
       summe += a + b;
       anzahl += 2;
     }
-    if (plus > besterPlus.staerke) besterPlus = { arme: m, staerke: plus };
-    if (minus > besterMinus.staerke) besterMinus = { arme: m, staerke: minus };
+    if (plus > staerkePlus) {
+      staerkePlus = plus;
+      besterPlus = { arme: m, radiusFrequenz: plusS, phase: winkel(spektrum, m, plusS), schaerfe: 0 };
+    }
+    if (minus > staerkeMinus) {
+      staerkeMinus = minus;
+      besterMinus = { arme: m, radiusFrequenz: minusS, phase: winkel(spektrum, m, minusS), schaerfe: 0 };
+    }
   }
 
   const untergrund = anzahl > 0 ? summe / anzahl : 0;
   const teile = (x: number): number => (untergrund > 0 ? x / untergrund : 0);
+  besterPlus.schaerfe = teile(staerkePlus);
+  besterMinus.schaerfe = teile(staerkeMinus);
 
   return {
     links: besterPlus.arme,
     rechts: besterMinus.arme,
-    schaerfeLinks: teile(besterPlus.staerke),
-    schaerfeRechts: teile(besterMinus.staerke),
+    schaerfeLinks: besterPlus.schaerfe,
+    schaerfeRechts: besterMinus.schaerfe,
+    familien: [besterPlus, besterMinus],
     treffer:
       besterPlus.arme !== besterMinus.arme &&
       benachbarteFibonacci(besterPlus.arme, besterMinus.arme),
@@ -170,7 +207,9 @@ export function createParastichenMetric(
 ): Metric {
   return {
     id: 'parastichen',
-    label: 'Parastichen',
+    // "Parastichen" heisst niemandem etwas, der es nicht schon weiss. Der
+    // Fachbegriff steht im Erklaertext, in der Anzeige steht, worum es geht.
+    label: 'Fibonacci-Spiralen',
 
     run(frame: Frame): Result {
       const roh = parastichen(frame, optionen);
@@ -228,7 +267,7 @@ export function createParastichenMetric(
           'Motiv liegen oder daran, dass die Kamera schräg steht.';
 
       return (
-        'Parastichen sind die Spiralarme, die das Auge in einem Blütenstand sieht. ' +
+        'Die Spiralarme in einem Blütenstand heißen Parastichen. ' +
         'Das Bild wird um seine Mitte abgerollt: waagerecht der Winkel, senkrecht der ' +
         'Logarithmus des Abstands zur Mitte. In dieser Darstellung wird aus jeder Spirale ' +
         'eine Gerade, und die Fouriertransformation zählt, wie oft sie den Kreis umrundet. ' +

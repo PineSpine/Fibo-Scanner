@@ -26,7 +26,7 @@ export interface Pipeline {
   /** Fertiges Ergebnis abholen, sonst null. */
   poll(): Frame | null;
   /** Kantenbild in den sichtbaren Puffer zeichnen (Kontrollansicht). */
-  present(width: number, height: number): void;
+  present(width: number, height: number, schwelle: number): void;
   dispose(): void;
 }
 
@@ -80,7 +80,11 @@ export function createPipeline(canvas: HTMLCanvasElement, size = 512): Pipeline 
     gray: gl.getUniformLocation(sobel, 'uGray'),
     size: gl.getUniformLocation(sobel, 'uSize'),
   };
-  const uPresent = { edges: gl.getUniformLocation(present, 'uEdges') };
+  const uPresent = {
+    edges: gl.getUniformLocation(present, 'uEdges'),
+    schwelle: gl.getUniformLocation(present, 'uSchwelle'),
+    farbe: gl.getUniformLocation(present, 'uFarbe'),
+  };
 
   function sourceDimensions(source: TexImageSource): [number, number] {
     if (source instanceof HTMLVideoElement) return [source.videoWidth, source.videoHeight];
@@ -174,7 +178,7 @@ export function createPipeline(canvas: HTMLCanvasElement, size = 512): Pipeline 
     return { gray: grayOut, edges: edgeOut, width: size, height: size, timestamp: slot.timestamp };
   }
 
-  function presentEdges(width: number, height: number): void {
+  function presentEdges(width: number, height: number, schwelle: number): void {
     canvas.width = width;
     canvas.height = height;
     gl.bindVertexArray(vao);
@@ -182,8 +186,13 @@ export function createPipeline(canvas: HTMLCanvasElement, size = 512): Pipeline 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, edges.texture);
     gl.uniform1i(uPresent.edges, 0);
+    gl.uniform1f(uPresent.schwelle, schwelle);
+    // Gruenspan aus dem Stylesheet, als Anteile von eins.
+    gl.uniform3f(uPresent.farbe, 0.306, 0.478, 0.42);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, width, height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
