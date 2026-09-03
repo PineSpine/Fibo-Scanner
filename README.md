@@ -121,6 +121,38 @@ Nach einem neuen Bau zeigt der Dienstarbeiter beim ersten Start noch den alten
 Stand und holt den neuen im Hintergrund — der zweite Start ist aktuell. Wer
 nicht warten will, lädt im Browser einmal hart neu.
 
+#### Was das über Mobilfunk kostet
+
+Über WLAN, über mobile Daten, über fremdes Gastnetz — die App ist eine ganz
+gewöhnliche Website und lädt überall. Was dabei über die Leitung geht:
+
+| | über Netz |
+|---|---|
+| Ornament (`ornament.png`) | 139,1 KB |
+| drei Schriftschnitte | 104,2 KB |
+| JavaScript, HTML, CSS, Rest | 14,2 KB |
+| **erster Aufruf** | **257,5 KB** |
+| **jeder weitere Aufruf** | **0 KB** |
+| **eine Messung** | **0 KB** |
+
+Der zweite Wert stimmt, weil der Dienstarbeiter alles behält. Der dritte, weil
+die App keinen einzigen Netzwerkaufruf enthält — nachprüfbar:
+
+```bash
+grep -rn "fetch(\|XMLHttpRequest\|WebSocket\|sendBeacon" src/
+```
+
+Die Antwort ist leer. Kein Analysedienst, kein Schrift-CDN, keine Karte, kein
+Bild-Upload. Was die Kamera sieht, geht in die Grafikeinheit und wieder heraus,
+mehr nicht.
+
+Das Ornament ist mit 54 Prozent der größte Posten. Es lädt als Graustufenbild
+mit Alphakanal, nicht als RGBA — im Stylesheet dient es nur als `mask-image`,
+die Farbkanäle sieht ohnehin niemand (`npm run ornament` stellt es aus der
+Vorlage in `docs/` her, spart 30 KB, sieht identisch aus). Wer weiter runter
+will, müsste die Auflösung senken oder die Linien als SVG nachzeichnen — beides
+verändert das Aussehen und lohnt für einen einmaligen Viertelmegabyte kaum.
+
 #### Beim Entwickeln am Telefon prüfen
 
 Fürs schnelle Ausprobieren zwischendurch, ohne jedes Mal zu veröffentlichen.
