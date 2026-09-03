@@ -333,9 +333,11 @@ body {
 }
 
 /*
- * Der eine orchestrierte Moment: wird der Wert stabil, wächst er sanft in
- * Position. Sonst bewegt sich nichts.
+ * Der eine orchestrierte Moment: wird der Wert stabil -- oder ist ein
+ * Fibonacci-Paar gefunden --, wächst er sanft in Position. Sonst bewegt sich
+ * nichts. Das sind die beiden einzigen Anlässe für Gold in der ganzen App.
  */
+.schleier[data-treffer='ja'] .wert,
 .schleier[data-stabil='ja'] .wert {
   color: var(--gold);
   transform: scale(1.06);
@@ -525,4 +527,47 @@ table.tafel td {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* --------------------------------------------------------------- Verfahren */
+
+/*
+ * Zwei Verfahren, ein Umschalter. Box-Counting läuft auf jedem Motiv, die
+ * Spiralenzählung braucht einen Blütenstand -- deshalb steht sie nicht
+ * nebenher, sondern wird gewählt.
+ */
+.modi {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--ink-zart);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.modus {
+  font-family: var(--serif);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-schwach);
+  background: transparent;
+  border: 0;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.modus + .modus {
+  border-left: 1px solid var(--ink-zart);
+}
+
+.modus[aria-pressed='true'] {
+  color: var(--paper);
+  background: var(--patina);
+}
+
+.halteanweisung {
+  margin: 0 0 0.6rem;
+  font-style: italic;
+  font-size: 0.9rem;
+  color: var(--patina);
 }

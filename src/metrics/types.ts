@@ -17,6 +17,11 @@ export interface Frame {
 export interface Result {
   /** Der Messwert selbst. Bedeutungslos, solange confidence() nahe 0 liegt. */
   value: number;
+  /**
+   * Wie der Wert dasteht, wenn eine einzelne Zahl ihn nicht fasst -- etwa
+   * "34/55" bei zwei Spiralfamilien. Fehlt er, wird `value` formatiert.
+   */
+  label?: string;
   /** Zwischenwerte fuer Anzeige, Pruefung und Fehlersuche. */
   detail: Readonly<Record<string, number>>;
   /** Warum der Wert unsicher ist. Leer heisst: kein bekannter Vorbehalt. */

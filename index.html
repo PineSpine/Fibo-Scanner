@@ -43,9 +43,16 @@
       <!-- Messansicht -->
       <section class="ansicht" id="ansicht-mess" hidden>
         <header class="mess-kopf">
-          <h2 class="mess-titel">Messung</h2>
+          <div class="modi" role="group" aria-label="Verfahren">
+            <button class="modus" id="modus-flaeche" type="button" aria-pressed="true">Fläche</button>
+            <button class="modus" id="modus-spirale" type="button" aria-pressed="false">Spirale</button>
+          </div>
           <button class="knopf knopf-klein" id="knopf-zurueck" type="button">Beenden</button>
         </header>
+
+        <p class="halteanweisung" id="halteanweisung" hidden>
+          Blütenstand frontal und formatfüllend in den Rahmen.
+        </p>
 
         <div class="platte">
           <video id="video" playsinline muted autoplay></video>
@@ -59,7 +66,7 @@
           </svg>
 
           <div class="schleier">
-            <p class="wert-name">Fraktale Dimension</p>
+            <p class="wert-name" id="wert-name">Fraktale Dimension</p>
             <output class="wert" id="wert">—</output>
             <p class="wert-hinweis" id="wert-hinweis">Kamera startet …</p>
           </div>
@@ -84,14 +91,6 @@
               <dd id="rand-konfidenz">—</dd>
             </div>
             <div class="rand-paar">
-              <dt>Kantendichte</dt>
-              <dd id="rand-dichte">—</dd>
-            </div>
-            <div class="rand-paar">
-              <dt>Geradheit r²</dt>
-              <dd id="rand-r2">—</dd>
-            </div>
-            <div class="rand-paar">
               <dt>Helligkeit</dt>
               <dd id="rand-helligkeit">—</dd>
             </div>
@@ -104,6 +103,8 @@
               <dd id="rand-messrate">—</dd>
             </div>
           </dl>
+          <!-- Was das jeweilige Verfahren selbst meldet, wechselt mit dem Modus. -->
+          <dl class="rand" id="rand-detail"></dl>
         </details>
       </section>
 

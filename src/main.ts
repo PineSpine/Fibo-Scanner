@@ -5,7 +5,8 @@ import { createWachhalter } from './camera/wakeLock.ts';
 import { createPipeline, type Pipeline } from './gpu/pipeline.ts';
 import { GpuError } from './gpu/context.ts';
 import { createBoxCountingMetric } from './metrics/boxCounting.ts';
-import type { Result } from './metrics/types.ts';
+import { createParastichenMetric } from './metrics/parastichen.ts';
+import type { Metric, Result } from './metrics/types.ts';
 import { createSmoother, createStabilityTracker } from './calibration/stability.ts';
 import { createAnzeige } from './ui/anzeige.ts';
 
@@ -23,7 +24,21 @@ const startFehler = frag<HTMLElement>('#start-fehler');
 const video = frag<HTMLVideoElement>('#video');
 const kanten = frag<HTMLCanvasElement>('#kanten');
 
-const metrik = createBoxCountingMetric();
+/**
+ * Die Verfahren. Beide erfuellen dieselbe Schnittstelle, die Anzeige muss
+ * keines von beiden kennen.
+ *
+ * Box-Counting laeuft auf jedem Motiv. Parastichen brauchen einen Bluetenstand,
+ * frontal und formatfuellend -- deshalb ein eigener Modus und keine
+ * Dauermessung nebenher.
+ */
+const VERFAHREN: Record<'flaeche' | 'spirale', Metric> = {
+  flaeche: createBoxCountingMetric(),
+  spirale: createParastichenMetric(),
+};
+type Modus = keyof typeof VERFAHREN;
+let modus: Modus = 'flaeche';
+let metrik: Metric = VERFAHREN.flaeche;
 const glaetter = createSmoother();
 const stabilitaet = createStabilityTracker();
 const anzeige = createAnzeige();
@@ -173,23 +188,32 @@ function schleife(jetzt: number): void {
     // Glättung noch in die Schwankungsrechnung -- sonst misst das
     // Zehn-Sekunden-Fenster die Einpendelphase mit.
     const zaehlt = licht.eingependelt;
+    // Geglaettet wird nur, wo eine stetige Groesse gemessen wird. Eine
+    // Spiralenzahl ist ganzzahlig; ein Mittelwert aus 34 und 55 waere 44,5 und
+    // damit eine Zahl, die es nicht gibt.
+    const stetig = ergebnis.label === undefined;
     const geglaettet = zaehlt ? glaetter.push(ergebnis.value, konfidenz) : glaetter.value;
     const bericht =
-      zaehlt && glaetter.settled
+      zaehlt && stetig && glaetter.settled
         ? stabilitaet.push(geglaettet, neuestes.timestamp)
         : stabilitaet.report;
 
-    const zeigeWert = zaehlt && glaetter.settled;
+    const zeigeWert = zaehlt && (stetig ? glaetter.settled : konfidenz > 0);
 
     anzeige.zeige({
-      wert: zeigeWert ? geglaettet : null,
+      verfahren: metrik.label,
+      wert: zeigeWert
+        ? stetig
+          ? wertText({ ...ergebnis, value: geglaettet })
+          : wertText(ergebnis)
+        : null,
       konfidenz: zaehlt ? konfidenz : 0,
       stabil: bericht.stable,
+      treffer: zeigeWert && (ergebnis.detail['treffer'] ?? 0) === 1,
       hinweis: hinweisText(ergebnis, konfidenz, bericht.stable, licht.eingependelt),
-      schwankung: bericht.samples > 1 ? bericht.span : null,
+      schwankung: stetig && bericht.samples > 1 ? bericht.span : null,
       sekunden: bericht.seconds,
-      dichte: ergebnis.detail['density'] ?? 0,
-      r2: ergebnis.detail['r2'] ?? 0,
+      detail: ergebnis.detail,
       helligkeit: licht.helligkeit,
       messrate,
       belichtung: belichtungstext,
@@ -200,6 +224,14 @@ function schleife(jetzt: number): void {
     const kante = Math.min(kanten.clientWidth, kanten.clientHeight) || 512;
     pipeline.present(kante, kante);
   }
+}
+
+function wertText(ergebnis: Result): string {
+  // Zwei Spiralenzahlen passen in keine einzelne Zahl -- dafuer gibt es label.
+  return (
+    ergebnis.label ??
+    ergebnis.value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  );
 }
 
 function hinweisText(
@@ -224,6 +256,31 @@ frag<HTMLButtonElement>('#knopf-start').addEventListener('click', () => {
 });
 
 frag<HTMLButtonElement>('#knopf-zurueck').addEventListener('click', messungBeenden);
+
+const halteanweisung = frag<HTMLElement>('#halteanweisung');
+const modusKnoepfe: Array<[Modus, HTMLButtonElement]> = [
+  ['flaeche', frag<HTMLButtonElement>('#modus-flaeche')],
+  ['spirale', frag<HTMLButtonElement>('#modus-spirale')],
+];
+
+function modusWaehlen(neu: Modus): void {
+  if (neu === modus) return;
+  modus = neu;
+  metrik = VERFAHREN[neu];
+  // Der alte Verlauf gehoert zum alten Verfahren. Ihn stehenzulassen hiesse,
+  // die Schwankung einer Groesse zu zeigen, die gar nicht mehr gemessen wird.
+  glaetter.reset();
+  stabilitaet.reset();
+  letztesErgebnis = null;
+  halteanweisung.hidden = neu !== 'spirale';
+  for (const [name, knopf] of modusKnoepfe) {
+    knopf.setAttribute('aria-pressed', String(name === neu));
+  }
+}
+
+for (const [name, knopf] of modusKnoepfe) {
+  knopf.addEventListener('click', () => modusWaehlen(name));
+}
 
 frag<HTMLButtonElement>('#knopf-erklaeren').addEventListener('click', () => {
   blattText.textContent = letztesErgebnis
