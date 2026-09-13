@@ -5,9 +5,22 @@ import { createWachhalter } from './camera/wakeLock.ts';
 import { createPipeline, type Pipeline } from './gpu/pipeline.ts';
 import { GpuError } from './gpu/context.ts';
 import { createBoxCountingMetric } from './metrics/boxCounting.ts';
-import { createParastichenMetric, parastichen } from './metrics/parastichen.ts';
+import { createParastichenMetric, parastichen, parastichenErgebnis } from './metrics/parastichen.ts';
 import type { Metric, Result } from './metrics/types.ts';
-import { createSmoother, createStabilityTracker, type Smoother } from './calibration/stability.ts';
+import {
+  createSmoother,
+  createStabilityTracker,
+  type Smoother,
+  type StabilityReport,
+} from './calibration/stability.ts';
+import {
+  EINIGKEIT_MINDEST,
+  fasseDiskret,
+  fasseStetig,
+  type Probe,
+  type Reihenbefund,
+} from './calibration/messreihe.ts';
+import { createUnruhewaechter } from './calibration/bewegung.ts';
 import { createAnzeige, erklaerungenAufbauen, type Befund } from './ui/anzeige.ts';
 import { createNachzeichner } from './ui/nachzeichnung.ts';
 import { LOGPOLAR_STANDARD } from './metrics/logPolar.ts';
@@ -24,6 +37,8 @@ const ansichtMess = frag<HTMLElement>('#ansicht-mess');
 const startFehler = frag<HTMLElement>('#start-fehler');
 const video = frag<HTMLVideoElement>('#video');
 const kanten = frag<HTMLCanvasElement>('#kanten');
+const standbild = frag<HTMLCanvasElement>('#standbild');
+const messTitel = frag<HTMLElement>('.mess-titel');
 
 /**
  * Alle Verfahren laufen nebeneinander. Nichts wird umgeschaltet -- die App
@@ -58,7 +73,33 @@ interface Verfahren {
   wert: string | null;
   hinweis: string;
   /** Nur bei der Spiralenzählung: die Familien zum Nachzeichnen. */
-  roh?: ParastichenRoh;
+  roh?: ParastichenRoh | undefined;
+  /** Einzelmessungen der laufenden Messreihe. Leer, solange keine läuft. */
+  proben: Reihenprobe[];
+  /** Was die abgeschlossene Reihe ergeben hat. Null im laufenden Betrieb. */
+  fest: Festbefund | null;
+}
+
+/**
+ * Eine Einzelmessung samt allem, was an ihrem Bild hängt. Die Zusammenfassung
+ * zeigt am Ende auf eine davon zurück -- und dann sollen Zwischenwerte,
+ * Schwellwert und Nachzeichnung von genau diesem Bild stammen und nicht von
+ * irgendeinem anderen.
+ */
+interface Reihenprobe {
+  probe: Probe;
+  ergebnis: Result;
+  roh?: ParastichenRoh | undefined;
+}
+
+/** Der festgehaltene Befund eines Verfahrens. */
+interface Festbefund {
+  /** Fertig formatiert, oder null, wenn die Reihe nichts hergab. */
+  wert: string | null;
+  zahl: number;
+  deutung: string;
+  treffer: boolean;
+  reihe: { proben: number; traeger: number; spanne: number };
 }
 
 const verfahren: Verfahren[] = [
@@ -72,6 +113,8 @@ const verfahren: Verfahren[] = [
     konfidenz: 0,
     wert: null,
     hinweis: '',
+    proben: [],
+    fest: null,
   },
   {
     metrik: createParastichenMetric(),
@@ -83,6 +126,8 @@ const verfahren: Verfahren[] = [
     konfidenz: 0,
     wert: null,
     hinweis: '',
+    proben: [],
+    fest: null,
   },
 ];
 
@@ -105,7 +150,43 @@ const SONDERBEFUND_AB = 0.6;
 
 let bildzaehler = 0;
 
+/**
+ * Was die App gerade tut.
+ *
+ *   live   → es wird fortlaufend gemessen und angezeigt
+ *   reihe  → eine Messreihe läuft, es wird gesammelt
+ *   fest   → Standbild, der Befund der Reihe steht
+ *
+ * Der Grund für die Reihe: Eine Einzelmessung aus der Hand ist eine
+ * Zufallsgröße. Der Ausschnitt wandert um Pixel, der Autofokus regelt nach,
+ * der Otsu-Schnitt springt um eine Graustufe -- und angezeigt wurde davon
+ * bisher immer das jüngste Bild, also der Zufall selbst. Eine Reihe misst
+ * stattdessen viele Bilder und hält fest, worauf sie sich geeinigt haben.
+ */
+type Messzustand = 'live' | 'reihe' | 'fest';
+let messzustand: Messzustand = 'live';
+
+/**
+ * Wie lange eine Messreihe sammelt.
+ *
+ * Zweieinhalb Sekunden sind ein Kompromiss: lang genug, dass Handzittern und
+ * Sensorrauschen sich herausmitteln, kurz genug, dass man den Arm ruhig hält.
+ * Das Zehn-Sekunden-Fenster der Abnahmebedingung bleibt davon unberührt -- es
+ * beantwortet eine andere Frage, nämlich ob das Gerät überhaupt ruhig messen
+ * kann.
+ */
+const REIHE_DAUER = 2500;
+/** Unter so vielen Einzelmessungen ist eine Abstimmung keine. */
+const REIHE_MINDESTPROBEN = 10;
+/** Nach dieser Zeit endet die Reihe auch mit zu wenigen Messungen. */
+const REIHE_HOECHSTDAUER = 6000;
+
+let reiheSeit = 0;
+/** Wie lange die festgehaltene Reihe wirklich gedauert hat, in Sekunden. */
+let reiheDauer = 0;
+
 const stabilitaet = createStabilityTracker();
+const unruhe = createUnruhewaechter();
 const anzeige = createAnzeige();
 const wachhalter = createWachhalter();
 const belichtung = createBelichtungswaechter();
@@ -157,6 +238,8 @@ const SPERRE_PRUEFDAUER = 1500;
  */
 let messrate = 0;
 let letzteMessung = 0;
+/** Damit das Standbild dieselbe Helligkeit ausweist wie das letzte Messbild. */
+let letzteHelligkeit = 0;
 
 function fehlerZeigen(text: string, hinweis = ''): void {
   startFehler.textContent = hinweis ? `${text} ${hinweis}` : text;
@@ -214,10 +297,15 @@ async function starteWirklich(): Promise<void> {
     v.konfidenz = 0;
     v.wert = null;
     v.hinweis = '';
+    v.proben.length = 0;
+    v.fest = null;
+    v.roh = undefined;
   }
   hauptId = verfahren[0]!.metrik.id;
   bildzaehler = 0;
+  weitermessen();
   stabilitaet.reset();
+  unruhe.reset();
   belichtung.reset();
   belichtungszustand = 'pendelt';
   belichtungstext = 'pendelt sich ein';
@@ -246,6 +334,15 @@ function schleife(jetzt: number): void {
   if (!laeuft || !pipeline) return;
   requestAnimationFrame(schleife);
 
+  if (messzustand === 'fest') {
+    // Am Standbild wird nicht gemessen. Die Kette wird trotzdem leergeräumt,
+    // damit beim Weitermessen kein Bild von vorhin als neuestes durchgeht.
+    while (pipeline.poll() !== null) {
+      /* verwerfen */
+    }
+    return;
+  }
+
   pipeline.submit(video, jetzt);
 
   // Alles abholen, was fertig ist; ausgewertet wird nur das jüngste Bild.
@@ -267,6 +364,8 @@ function schleife(jetzt: number): void {
 
     const licht = belichtung.beobachte(neuestes.gray, neuestes.timestamp);
     zuDunkel = licht.zuDunkel;
+    letzteHelligkeit = licht.helligkeit;
+    unruhe.beobachte(neuestes.gray);
 
     belichtungPflegen(licht.eingependelt, licht.helligkeit, neuestes.timestamp);
 
@@ -280,11 +379,23 @@ function schleife(jetzt: number): void {
     let bericht = stabilitaet.report;
 
     for (const v of verfahren) {
-      if (bildzaehler % v.jedesNte !== 0 && v.ergebnis !== null) continue;
+      // Während einer Reihe rechnet jedes Verfahren bei jedem Bild. Die
+      // Staffelung spart Rechenzeit im Dauerbetrieb; in den zweieinhalb
+      // Sekunden einer Reihe ist jede Einzelmessung eine Stimme, und auf die
+      // kommt es hier an.
+      if (messzustand !== 'reihe' && bildzaehler % v.jedesNte !== 0 && v.ergebnis !== null) continue;
 
-      const ergebnis = v.metrik.run(neuestes);
+      // Die Rohmessung wird gebraucht, das Ergebnis auch -- aber beides aus
+      // einer Rechnung. Vorher lief die Fouriertransformation zweimal.
+      let ergebnis: Result;
+      if (v.spezifisch) {
+        const roh = parastichen(neuestes);
+        v.roh = roh;
+        ergebnis = parastichenErgebnis(roh);
+      } else {
+        ergebnis = v.metrik.run(neuestes);
+      }
       const konfidenz = v.metrik.confidence(ergebnis);
-      if (v.spezifisch) v.roh = parastichen(neuestes);
       v.ergebnis = ergebnis;
       v.konfidenz = zaehlt ? konfidenz : 0;
       v.hinweis = ergebnis.caveats[0] ?? '';
@@ -302,36 +413,26 @@ function schleife(jetzt: number): void {
         // soll das sagen und nicht raten.
         v.wert = zaehlt && konfidenz > 0 ? wertText(ergebnis) : null;
       }
+
+      // Eine Stimme für die laufende Reihe. Bilder aus der Einpendelphase
+      // stimmen nicht mit ab -- sie zeigen die Belichtung, nicht das Motiv.
+      if (messzustand === 'reihe' && zaehlt) {
+        v.proben.push({
+          probe: {
+            wert: ergebnis.value,
+            marke: konfidenz > 0 ? wertText(ergebnis) : null,
+            konfidenz,
+          },
+          ergebnis,
+          roh: v.roh,
+        });
+      }
     }
 
-    const haupt = hauptWaehlen();
-    // Das aussagekräftigste zuerst, dann die übrigen -- alle in einer Liste.
-    const sortiert = [haupt, ...verfahren.filter((v) => v !== haupt)];
+    if (messzustand === 'reihe') reihePruefen(neuestes.timestamp);
 
-    // Nachgezeichnet wird nur, was auch gefunden wurde.
-    const spirale = verfahren.find((v) => !v.stetig);
-    if (spirale && spirale.konfidenz >= 0.6 && spirale.roh) {
-      nachzeichner.spiralen(
-        spirale.roh.familien,
-        (spirale.ergebnis?.detail['treffer'] ?? 0) === 1,
-        LOGPOLAR_STANDARD,
-      );
-    } else {
-      nachzeichner.loeschen();
-    }
-
-    anzeige.zeige({
-      befunde: sortiert.map((v) => alsBefund(v)),
-      zustand: zustandText(licht.eingependelt),
-      stabil: bericht.stable,
-      schwankung: bericht.samples > 1 ? bericht.span : null,
-      sekunden: bericht.seconds,
-      detail: haupt.ergebnis?.detail ?? {},
-      helligkeit: licht.helligkeit,
-      messrate,
-      belichtung: belichtungstext,
-      stand: __BAUZEIT__,
-    });
+    nachzeichnungPflegen();
+    befundeZeigen(zustandText(licht.eingependelt, neuestes.timestamp), licht.helligkeit, bericht);
   }
 
   if (zeigeKanten) {
@@ -341,6 +442,205 @@ function schleife(jetzt: number): void {
     const schwelle = (verfahren[0]?.ergebnis?.detail['threshold'] ?? 20) / 255;
     pipeline.present(kante, kante, schwelle);
   }
+}
+
+/** Nachgezeichnet wird nur, was auch gefunden wurde. */
+function nachzeichnungPflegen(): void {
+  const spirale = verfahren.find((v) => !v.stetig);
+  if (spirale && spirale.konfidenz >= 0.6 && spirale.roh) {
+    nachzeichner.spiralen(
+      spirale.roh.familien,
+      (spirale.ergebnis?.detail['treffer'] ?? 0) === 1,
+      LOGPOLAR_STANDARD,
+    );
+  } else {
+    nachzeichner.loeschen();
+  }
+}
+
+function befundeZeigen(zustand: string, helligkeit: number, bericht: StabilityReport): void {
+  const haupt = hauptWaehlen();
+  // Das aussagekräftigste zuerst, dann die übrigen -- alle in einer Liste.
+  const sortiert = [haupt, ...verfahren.filter((v) => v !== haupt)];
+
+  anzeige.zeige({
+    befunde: sortiert.map((v) => alsBefund(v)),
+    zustand,
+    stabil: bericht.stable,
+    schwankung: bericht.samples > 1 ? bericht.span : null,
+    sekunden: bericht.seconds,
+    detail: haupt.ergebnis?.detail ?? {},
+    helligkeit,
+    unruhe: unruhe.wert,
+    messrate,
+    belichtung: belichtungstext,
+    stand: __BAUZEIT__,
+  });
+}
+
+/**
+ * Prüft, ob die laufende Messreihe lang genug ist.
+ *
+ * Zwei Bedingungen, und die Zeit allein genügt nicht: Auf einem langsamen
+ * Gerät kämen in zweieinhalb Sekunden womöglich fünf Einzelmessungen zustande,
+ * und aus fünf Stimmen wird keine Abstimmung. Deshalb läuft die Reihe
+ * notfalls länger -- aber nicht unbegrenzt, sonst hält niemand still.
+ */
+function reihePruefen(jetzt: number): void {
+  const verstrichen = jetzt - reiheSeit;
+  const proben = verfahren[0]?.proben.length ?? 0;
+  const genug = proben >= REIHE_MINDESTPROBEN;
+  if ((verstrichen >= REIHE_DAUER && genug) || verstrichen >= REIHE_HOECHSTDAUER) {
+    reiheAbschliessen(verstrichen);
+  }
+}
+
+/** Startet eine Messreihe. */
+function reiheStarten(jetzt: number): void {
+  for (const v of verfahren) {
+    v.proben.length = 0;
+    v.fest = null;
+  }
+  unruhe.gipfelZuruecksetzen();
+  reiheSeit = jetzt;
+  reiheDauer = 0;
+  messzustand = 'reihe';
+  knopfBeschriften();
+}
+
+/**
+ * Schließt die Reihe ab: Aus vielen Einzelmessungen wird ein Befund, und aus
+ * dem laufenden Bild ein Standbild.
+ */
+function reiheAbschliessen(dauer: number): void {
+  reiheDauer = dauer / 1000;
+
+  for (const v of verfahren) {
+    const proben = v.proben.map((p) => p.probe);
+    // Stetig oder ganzzahlig -- dieselbe Unterscheidung wie bei der Glättung,
+    // und aus demselben Grund: Ein Mittel aus 34 und 55 wäre 44,5.
+    const befund: Reihenbefund = v.stetig ? fasseStetig(proben) : fasseDiskret(proben);
+    const vertreter = befund.vertreter >= 0 ? v.proben[befund.vertreter] : undefined;
+
+    if (vertreter) {
+      v.ergebnis = vertreter.ergebnis;
+      v.roh = vertreter.roh;
+    }
+
+    v.fest = festbefundBauen(v, befund, vertreter?.ergebnis);
+    v.konfidenz = v.fest.wert === null ? 0 : befund.konfidenz;
+    v.wert = v.fest.wert;
+    v.hinweis = festhinweis(befund, vertreter?.ergebnis);
+    // Die Einzelmessungen haben ihren Dienst getan; der Befund steht.
+    v.proben.length = 0;
+  }
+
+  standbildZeichnen();
+  // Das Kantenbild einmal einfrieren, mit der Schwelle des vertretenden
+  // Bildes. Danach wird nicht mehr gezeichnet, und der Knopf "Kanten zeigen"
+  // blendet das stehende Bild nur noch ein und aus.
+  if (pipeline) {
+    const kante = Math.min(kanten.clientWidth, kanten.clientHeight) || 512;
+    pipeline.present(kante, kante, (verfahren[0]?.ergebnis?.detail['threshold'] ?? 20) / 255);
+  }
+
+  messzustand = 'fest';
+  knopfBeschriften();
+  nachzeichnungPflegen();
+  befundeZeigen(zustandText(true, 0), letzteHelligkeit, stabilitaet.report);
+}
+
+/**
+ * Macht aus der Zusammenfassung das, was dasteht.
+ *
+ * Die Hürde `EINIGKEIT_MINDEST` ist der Kern: Ein Wert, über den sich die
+ * Reihe nicht einig war, wird nicht angezeigt. Eine Zahl, die aus sechs von
+ * achtundfünfzig Bildern stammt, ist keine Messung, sondern eine Behauptung --
+ * und die aufzustellen ist der gefährlichere Fehler.
+ */
+function festbefundBauen(
+  v: Verfahren,
+  befund: Reihenbefund,
+  ergebnis: Result | undefined,
+): Festbefund {
+  const reihe = { proben: befund.proben, traeger: befund.traeger, spanne: befund.spanne };
+  const tragfaehig =
+    befund.marke !== null && ergebnis !== undefined && befund.einigkeit >= EINIGKEIT_MINDEST;
+
+  if (!tragfaehig) {
+    return { wert: null, zahl: 0, deutung: '', treffer: false, reihe };
+  }
+
+  // Beim stetigen Verfahren ist der Median der Befund, nicht der Wert des
+  // vertretenden Bildes -- das Bild steht nur für die Zwischenwerte.
+  const wert = v.stetig ? wertText({ ...ergebnis, value: befund.wert }) : befund.marke;
+
+  return {
+    wert,
+    zahl: befund.wert,
+    deutung: ergebnis.deutung ?? '',
+    treffer: (ergebnis.detail['treffer'] ?? 0) === 1,
+    reihe,
+  };
+}
+
+/** Warum ein festgehaltener Befund unsicher ist -- oder gar keiner wurde. */
+function festhinweis(befund: Reihenbefund, ergebnis: Result | undefined): string {
+  if (befund.proben === 0) return 'keine Messung zustande gekommen – Belichtung war unruhig';
+  if (befund.marke === null) return ergebnis?.caveats[0] ?? 'in dieser Reihe nichts gefunden';
+  if (befund.einigkeit < EINIGKEIT_MINDEST) {
+    return `die Messungen widersprechen einander – ${befund.traeger} von ${befund.proben}`;
+  }
+  return ergebnis?.caveats[0] ?? '';
+}
+
+/** Zurück in den laufenden Betrieb. */
+function weitermessen(): void {
+  messzustand = 'live';
+  reiheDauer = 0;
+  standbild.hidden = true;
+  for (const v of verfahren) {
+    v.fest = null;
+    v.proben.length = 0;
+  }
+  // Das Zehn-Sekunden-Fenster hat ein Loch, solange das Standbild stand.
+  // Ein Fenster mit Loch misst nicht mehr, was es zu messen vorgibt.
+  stabilitaet.reset();
+  knopfBeschriften();
+}
+
+/**
+ * Zeichnet das laufende Bild als Standbild.
+ *
+ * Genommen wird derselbe mittige quadratische Ausschnitt, den auch die Messung
+ * sieht -- ein Standbild, das mehr zeigt als gemessen wurde, wäre irreführend.
+ * Es ist das Bild vom Ende der Reihe, nicht das eine vertretende Bild: Bei
+ * ruhiger Hand ist das dasselbe Motiv, und ein Graustufenbild aus dem
+ * Rechenpfad wäre schlechter zu erkennen als das Kamerabild.
+ */
+function standbildZeichnen(): void {
+  const breite = video.videoWidth;
+  const hoehe = video.videoHeight;
+  if (breite === 0 || hoehe === 0) return;
+  const kante = Math.min(breite, hoehe);
+  const seite = Math.min(kante, 1024);
+  standbild.width = seite;
+  standbild.height = seite;
+  const ctx = standbild.getContext('2d');
+  if (!ctx) return;
+  ctx.drawImage(video, (breite - kante) / 2, (hoehe - kante) / 2, kante, kante, 0, 0, seite, seite);
+  standbild.hidden = false;
+}
+
+function knopfBeschriften(): void {
+  messTitel.textContent = messzustand === 'fest' ? 'Festgehalten' : 'Befund';
+  festhaltenKnopf.disabled = messzustand === 'reihe';
+  festhaltenKnopf.textContent =
+    messzustand === 'fest'
+      ? 'Weiter messen'
+      : messzustand === 'reihe'
+        ? 'Messreihe läuft …'
+        : 'Messung festhalten';
 }
 
 /**
@@ -372,15 +672,17 @@ function hauptWaehlen(): Verfahren {
 
 function alsBefund(v: Verfahren): Befund {
   const skala = v.metrik.skala;
-  const wertZahl = v.stetig ? v.glaetter.value : (v.ergebnis?.value ?? 0);
+  const fest = v.fest;
+  const wertZahl = fest ? fest.zahl : v.stetig ? v.glaetter.value : (v.ergebnis?.value ?? 0);
   return {
     id: v.metrik.id,
     name: v.metrik.label,
     wert: v.wert,
     konfidenz: v.konfidenz,
-    treffer: v.wert !== null && (v.ergebnis?.detail['treffer'] ?? 0) === 1,
+    treffer: v.wert !== null && (fest ? fest.treffer : (v.ergebnis?.detail['treffer'] ?? 0) === 1),
     hinweis: v.hinweis,
-    deutung: v.ergebnis?.deutung ?? '',
+    deutung: fest ? fest.deutung : (v.ergebnis?.deutung ?? ''),
+    reihe: fest && fest.wert !== null ? fest.reihe : undefined,
     skala: skala
       ? {
           ...skala,
@@ -394,7 +696,23 @@ function alsBefund(v: Verfahren): Befund {
  * Über dem Bild steht nur, was mit dem Bild selbst nicht stimmt. Alles andere
  * gehört zu einem bestimmten Verfahren und steht in dessen Zeile.
  */
-function zustandText(eingependelt: boolean): string {
+function zustandText(eingependelt: boolean, jetzt: number): string {
+  // Das Standbild ist ein Zustand des Bildes und gehört deshalb hierher --
+  // und es muss dastehen, sonst hält man ein eingefrorenes Bild für ein
+  // stehengebliebenes.
+  if (messzustand === 'fest') {
+    return `Standbild – Messreihe über ${reiheDauer.toLocaleString('de-DE', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })} s`;
+  }
+  if (messzustand === 'reihe') {
+    const verstrichen = Math.max(0, (jetzt - reiheSeit) / 1000);
+    return `Messreihe läuft – ruhig halten (${verstrichen.toLocaleString('de-DE', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })} s)`;
+  }
   if (!eingependelt) return 'Belichtung pendelt sich ein …';
   if (zuDunkel) return 'Zu dunkel – mehr Licht';
   return '';
@@ -469,6 +787,12 @@ frag<HTMLButtonElement>('#knopf-start').addEventListener('click', () => {
 });
 
 frag<HTMLButtonElement>('#knopf-zurueck').addEventListener('click', messungBeenden);
+
+const festhaltenKnopf = frag<HTMLButtonElement>('#knopf-festhalten');
+festhaltenKnopf.addEventListener('click', () => {
+  if (messzustand === 'fest') weitermessen();
+  else if (messzustand === 'live') reiheStarten(performance.now());
+});
 
 const kantenKnopf = frag<HTMLButtonElement>('#knopf-kanten');
 kantenKnopf.addEventListener('click', () => {

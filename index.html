@@ -58,6 +58,12 @@
 
         <div class="platte">
           <video id="video" playsinline muted autoplay></video>
+
+          <!-- Das festgehaltene Bild liegt über dem laufenden. Die Kamera läuft
+               darunter weiter: Sie neu zu starten hieße, die Belichtungssperre
+               aufzugeben, um die anderthalb Sekunden gerungen wurde. -->
+          <canvas id="standbild" hidden></canvas>
+
           <canvas id="kanten" hidden></canvas>
 
           <!-- Was gefunden wurde, ins Bild gelegt: die Spiralarme dort, wo sie
@@ -80,6 +86,12 @@
         <ul class="befunde" id="befunde"></ul>
 
         <div class="knoepfe">
+          <!-- Eine Einzelmessung aus der Hand ist eine Zufallsgröße. Der Knopf
+               sammelt stattdessen eine Reihe und hält fest, worauf sie sich
+               geeinigt hat -- samt der Angabe, wie einig sie war. -->
+          <button class="knopf knopf-haupt" id="knopf-festhalten" type="button">
+            Messung festhalten
+          </button>
           <button class="knopf" id="knopf-kanten" type="button" aria-pressed="false">
             Kanten zeigen
           </button>
@@ -103,6 +115,13 @@
             <div class="rand-paar">
               <dt>Helligkeit</dt>
               <dd id="rand-helligkeit">—</dd>
+            </div>
+            <!-- Wie stark sich das Bild von Messung zu Messung ändert. Die
+                 Zahl beantwortet bei jedem zappelnden Wert die erste Frage:
+                 lag es am Verfahren oder an der Hand? -->
+            <div class="rand-paar">
+              <dt>Bildunruhe</dt>
+              <dd id="rand-unruhe">—</dd>
             </div>
             <div class="rand-paar">
               <dt>Belichtung</dt>

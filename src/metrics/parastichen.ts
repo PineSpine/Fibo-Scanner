@@ -193,6 +193,48 @@ export function parastichen(
   };
 }
 
+/**
+ * Macht aus der Rohmessung das Ergebnis, das die Anzeige bekommt.
+ *
+ * Getrennt von `run`, weil die Schleife beides braucht: das Ergebnis fuer die
+ * Zahl und die Rohmessung fuer die Nachzeichnung. Vorher rief sie `run` und
+ * `parastichen` nacheinander auf und liess dieselbe Fouriertransformation
+ * zweimal rechnen -- 10,6 statt 5,3 Millisekunden je Bild, und das genau bei
+ * dem Verfahren, das die meisten Einzelmessungen braucht, um verlaesslich zu
+ * werden.
+ */
+export function parastichenErgebnis(roh: ParastichenRoh): Result {
+  const caveats: string[] = [];
+
+  const klein = Math.min(roh.links, roh.rechts);
+  const gross = Math.max(roh.links, roh.rechts);
+  const schwaechere = Math.min(roh.schaerfeLinks, roh.schaerfeRechts);
+
+  if (roh.streuung < STRUKTUR_MINDEST) caveats.push('zu wenig Struktur – kein Blütenstand im Bild');
+  else if (schwaechere < GIPFEL_MINDEST) caveats.push('keine deutlichen Spiralen – frontal und formatfüllend halten');
+  else if (roh.links === roh.rechts) caveats.push('nur eine Spiralfamilie erkennbar');
+  else if (!roh.treffer) caveats.push('Spiralen gezählt, aber kein Fibonacci-Paar');
+
+  return {
+    value: gross,
+    label: `${klein}/${gross}`,
+    deutung: roh.treffer
+      ? 'benachbarte Fibonacci-Zahlen'
+      : klein > 0
+        ? 'Spiralen gezählt, kein Fibonacci-Paar'
+        : '',
+    detail: {
+      streuung: roh.streuung,
+      links: roh.links,
+      rechts: roh.rechts,
+      schaerfeLinks: roh.schaerfeLinks,
+      schaerfeRechts: roh.schaerfeRechts,
+      treffer: roh.treffer ? 1 : 0,
+    },
+    caveats,
+  };
+}
+
 function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
@@ -225,36 +267,7 @@ export function createParastichenMetric(
     ],
 
     run(frame: Frame): Result {
-      const roh = parastichen(frame, optionen);
-      const caveats: string[] = [];
-
-      const klein = Math.min(roh.links, roh.rechts);
-      const gross = Math.max(roh.links, roh.rechts);
-      const schwaechere = Math.min(roh.schaerfeLinks, roh.schaerfeRechts);
-
-      if (roh.streuung < STRUKTUR_MINDEST) caveats.push('zu wenig Struktur – kein Blütenstand im Bild');
-      else if (schwaechere < GIPFEL_MINDEST) caveats.push('keine deutlichen Spiralen – frontal und formatfüllend halten');
-      else if (roh.links === roh.rechts) caveats.push('nur eine Spiralfamilie erkennbar');
-      else if (!roh.treffer) caveats.push('Spiralen gezählt, aber kein Fibonacci-Paar');
-
-      return {
-        value: gross,
-        label: `${klein}/${gross}`,
-        deutung: roh.treffer
-          ? 'benachbarte Fibonacci-Zahlen'
-          : klein > 0
-            ? 'Spiralen gezählt, kein Fibonacci-Paar'
-            : '',
-        detail: {
-          streuung: roh.streuung,
-          links: roh.links,
-          rechts: roh.rechts,
-          schaerfeLinks: roh.schaerfeLinks,
-          schaerfeRechts: roh.schaerfeRechts,
-          treffer: roh.treffer ? 1 : 0,
-        },
-        caveats,
-      };
+      return parastichenErgebnis(parastichen(frame, optionen));
     },
 
     confidence(r: Result): number {

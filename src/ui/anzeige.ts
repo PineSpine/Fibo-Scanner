@@ -13,6 +13,14 @@ export interface Befund {
   deutung: string;
   /** Spanne mit Marke, falls der Wert auf einer festen Achse liegt. */
   skala?: { min: number; max: number; links: string; rechts: string; anteil: number } | undefined;
+  /**
+   * Bei einer festgehaltenen Messung: wie einig sich die Reihe war.
+   *
+   * Das ist die eigentliche Auskunft einer festgehaltenen Messung. Eine Zahl,
+   * die 41 von 58 Bildern getragen haben, ist etwas anderes als dieselbe Zahl
+   * aus 6 von 58 -- und wer eine Messung festhält, will genau das wissen.
+   */
+  reihe?: { proben: number; traeger: number; spanne: number } | undefined;
 }
 
 export interface AnzeigeZustand {
@@ -32,6 +40,8 @@ export interface AnzeigeZustand {
   sekunden: number;
   /** Mittlere Bildhelligkeit 0..255. */
   helligkeit: number;
+  /** Mittlere Änderung zwischen zwei Messbildern, in Graustufen. */
+  unruhe: number;
   /** Ausgewertete Bilder je Sekunde. */
   messrate: number;
   belichtung: string;
@@ -92,6 +102,28 @@ function vertrauensstufe(konfidenz: number): 'gut' | 'gering' | 'keins' {
   return 'keins';
 }
 
+/**
+ * Die Zeile unter dem Wert: was ihn trägt und was gegen ihn spricht.
+ *
+ * Bei einer festgehaltenen Messung steht dort, wie viele Einzelmessungen den
+ * Wert getragen haben. Das ist keine Zierde -- es ist die Antwort auf die
+ * Frage, ob die Zahl reproduzierbar ist, und zwar aus der Messung selbst statt
+ * aus dem Gefühl des Betrachters.
+ */
+function vertrauenstext(b: Befund): string {
+  if (b.wert === null) return b.hinweis || 'nichts gefunden';
+
+  const teile = [`Vertrauen ${Math.round(b.konfidenz * 100)} %`];
+  if (b.reihe) {
+    teile.push(`einig in ${b.reihe.traeger} von ${b.reihe.proben} Messungen`);
+    // Eine Spanne von null heißt nicht "sehr genau", sondern "hier gibt es
+    // keine Spanne" -- eine Abstimmung über ganze Zahlen hat keine.
+    if (b.reihe.spanne > 0) teile.push(`Spanne ${zahl(b.reihe.spanne, 3)}`);
+  }
+  if (b.hinweis) teile.push(b.hinweis);
+  return teile.join(' · ');
+}
+
 function frag<T extends Element>(wurzel: ParentNode, wahl: string): T {
   const element = wurzel.querySelector<T>(wahl);
   if (!element) throw new Error(`Element fehlt: ${wahl}`);
@@ -106,6 +138,7 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
   const messrateFeld = frag<HTMLElement>(wurzel, '#rand-messrate');
   const belichtungFeld = frag<HTMLElement>(wurzel, '#rand-belichtung');
   const helligkeitFeld = frag<HTMLElement>(wurzel, '#rand-helligkeit');
+  const unruheFeld = frag<HTMLElement>(wurzel, '#rand-unruhe');
   const standFeld = frag<HTMLElement>(wurzel, '#rand-stand');
   const detailListe = frag<HTMLElement>(wurzel, '#rand-detail');
 
@@ -192,12 +225,7 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
         // Ohne Vertrauen keine Zahl, sondern der Grund. Eine Zahl ohne Deckung
         // wäre genau die Behauptung, die die App nicht aufstellen soll.
         if (wert) wert.textContent = b.wert ?? '—';
-        if (vertrauen) {
-          vertrauen.textContent =
-            b.wert === null
-              ? b.hinweis || 'nichts gefunden'
-              : `Vertrauen ${Math.round(b.konfidenz * 100)} %${b.hinweis ? ` · ${b.hinweis}` : ''}`;
-        }
+        if (vertrauen) vertrauen.textContent = vertrauenstext(b);
         const fuellung = zeile.querySelector<HTMLElement>('.befund-balken i');
         if (fuellung) fuellung.style.width = `${Math.round(b.konfidenz * 100)}%`;
       });
@@ -222,6 +250,7 @@ export function createAnzeige(wurzel: ParentNode = document): Anzeige {
       standFeld.textContent = z.stand;
       // Ein Prozentwert der vollen Aussteuerung ist greifbarer als 0..255.
       helligkeitFeld.textContent = `${zahl((z.helligkeit / 255) * 100, 0)} %`;
+      unruheFeld.textContent = z.unruhe > 0 ? zahl(z.unruhe, 1) : '—';
 
       // Die Zeilen werden nur neu gebaut, wenn sich die Auswahl der Schlüssel
       // ändert -- sonst hinge bei dreißig Bildern je Sekunde das halbe

@@ -200,6 +200,23 @@ body {
   font-size: 0.8rem;
 }
 
+/*
+ * Festhalten ist die Handlung, um derentwillen man die App aufmacht: Eine
+ * laufende Zahl kann man nicht aufschreiben. Der Knopf steht deshalb kräftiger
+ * da als das Kantenbild daneben -- aber in derselben Tinte, ohne Farbe. Gold
+ * hat genau zwei Anlässe, und ein Knopf ist keiner davon.
+ */
+.knopf-haupt {
+  border-color: var(--ink);
+}
+
+.knopf-haupt:disabled {
+  border-color: var(--ink-zart);
+  color: var(--ink-schwach);
+  cursor: default;
+  font-style: italic;
+}
+
 .knoepfe {
   display: flex;
   gap: 0.6rem;
@@ -487,6 +504,17 @@ body {
 /* Das Kantenbild liegt als Überlagerung auf dem Bild, nicht an seiner Stelle. */
 .platte canvas {
   pointer-events: none;
+}
+
+/*
+ * Das Standbild deckt das laufende Bild vollständig ab -- darunter läuft die
+ * Kamera weiter, damit die erkämpfte Belichtungssperre nicht verlorengeht.
+ * Es ist undurchsichtig, sonst schimmerte das laufende Bild durch und der
+ * Eindruck wäre genau der falsche.
+ */
+#standbild {
+  background: var(--ink);
+  object-fit: contain;
 }
 
 

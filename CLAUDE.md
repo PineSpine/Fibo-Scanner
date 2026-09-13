@@ -26,8 +26,16 @@ Privatprojekt. Kein Produkt, kein Store, kein Nutzerkonto.
 | M3 — Rotationssymmetrie | offen (Log-Polar steht bereits in `metrics/logPolar.ts`) |
 | M5 — Packung / Voronoi | offen |
 
-63 Tests, 9 Dateien. `npm test` muss grün sein, bevor irgendetwas gepusht wird —
+81 Tests, 10 Dateien. `npm test` muss grün sein, bevor irgendetwas gepusht wird —
 der Workflow bricht sonst ab und veröffentlicht nicht.
+
+**Der Feldtest hat den entscheidenden Mangel gezeigt:** Beide Verfahren werten
+je ein einzelnes Bild aus, und ein einzelnes Bild aus der Hand ist eine
+Zufallsgröße. Angezeigt wurde davon immer das jüngste — also der Zufall selbst.
+Die Spiralenzahl wechselte im Millisekundentakt, und damit war keine Aussage
+reproduzierbar. Gegenmaßnahme ist die **Messreihe** (siehe
+[Reliabilität](#reliabilität)): Nicht der letzte Wert zählt, sondern der, auf
+den sich viele Bilder geeinigt haben — und wie einig sie waren, steht daneben.
 
 **Offen und wichtig:** Die Abnahmebedingung für M1 — *Schwankung unter 0,05 über
 zehn Sekunden bei ruhiger Hand* — ist am Gerät **noch nicht bestätigt**. Die App
@@ -172,6 +180,8 @@ src/
   ui/          anzeige.ts       Befundliste, Messprotokoll, Erklärungen
                nachzeichnung.ts zeichnet gefundene Spiralen ins Bild
   calibration/ stability.ts     Schwankungsfenster und Glättung
+               messreihe.ts     viele Einzelmessungen zu einem Befund
+               bewegung.ts      Bildunruhe zwischen zwei Messbildern
   main.ts                       Schleife, Verfahrensauswahl, Verdrahtung
 test/fixtures/ images.ts        Sierpinski, Koch, Rauschen, leer
                scenes.ts        Wand, Backstein, fBm, Verzweigungsbaum, Weichzeichner
@@ -228,6 +238,54 @@ sagen, was im Bild steckt, nicht fragen, wonach man suchen will.
   fast nie.
 - Ein Wechsel des Hauptbefundes braucht 0,15 Vorsprung, sonst springt die
   Überschrift bei jedem Bild.
+- **Während einer Messreihe rechnet jedes Verfahren bei jedem Bild.** Die
+  Staffelung spart Rechenzeit im Dauerbetrieb; in den zweieinhalb Sekunden einer
+  Reihe ist jede Einzelmessung eine Stimme.
+
+---
+
+## Reliabilität
+
+Die Verfahren selbst sind kalibriert und tun, was sie sollen — der Mangel lag
+eine Ebene darüber: **eine Einzelmessung wurde für einen Befund gehalten.**
+
+### Die Messreihe
+
+Der Knopf „Messung festhalten" sammelt zweieinhalb Sekunden lang
+Einzelmessungen, fasst sie zusammen, friert das Kamerabild ein und stellt den
+Befund still. Nochmal drücken heißt „Weiter messen".
+
+Die Zusammenfassung hängt davon ab, was für eine Größe gemessen wird — dieselbe
+Unterscheidung wie bei der Glättung (`stetig`), und aus demselben Grund:
+
+| Größe | Zusammenfassung | warum |
+|---|---|---|
+| fraktale Dimension | **Median** | Ein einziges verwackeltes Bild zieht den Mittelwert um Zehntel. Der Median sieht es nicht. |
+| Spiralenzahlen | **Abstimmung** | Ein Mittel aus 34 und 55 wäre 44,5 — eine Zahl, die es nicht gibt. |
+
+**Die Einigkeit ist selbst ein Messwert.** Sie steht unter jedem festgehaltenen
+Wert: „einig in 41 von 58 Messungen". Im Nenner stehen *alle* Bilder der Reihe,
+auch die, die nichts gefunden haben — wenn zwei Drittel geschwiegen haben,
+gehört das in die Aussage. Das Vertrauen ist das Produkt aus dem, was die
+Verfahren den tragenden Bildern zugetraut haben, und dem Anteil, den sie
+ausmachen. Beides muss stimmen.
+
+Unter einem Viertel Einigkeit (`EINIGKEIT_MINDEST`) zeigt die App **keinen
+Wert**, sondern den Grund: „die Messungen widersprechen einander — 6 von 58".
+Das ist dieselbe Regel wie überall sonst: Der gefährlichere Fehler ist nie,
+etwas zu übersehen, sondern etwas zu behaupten.
+
+### Bildunruhe
+
+`calibration/bewegung.ts` misst den mittleren Helligkeitsunterschied zwischen
+zwei Messbildern. Die Zahl steht im Messprotokoll und beantwortet bei jedem
+zappelnden Wert die erste Frage: **lag es am Verfahren oder an der Hand?**
+
+Bewusst **kein Tor** — es wird kein Bild verworfen, weil es „zu unruhig" wäre.
+Eine solche Schwelle müsste am Gerät gemessen sein, und das ist sie nicht.
+Unruhige Bilder erledigen sich in der Reihe von selbst: Sie sind sich
+untereinander uneinig, und genau das meldet die Reihe. **Die Schwelle ist noch
+nicht kalibriert; die Zahl steht da, damit sie es werden kann.**
 
 ---
 
@@ -352,6 +410,13 @@ Warum so umständlich: siehe [Fallstricke](#fallstricke).
   Blütenstand im Bild"). Ohne Vertrauen gar keine Zahl, sondern ein Strich.
 - **Gold hat genau zwei Anlässe:** ein gefundenes Fibonacci-Paar und die erfüllte
   Abnahmebedingung von M1. Sonst nirgends.
+- **Ein festgehaltener Wert sagt, worauf er sich stützt.** „einig in 41 von 58
+  Messungen" steht dort, wo sonst nur das Vertrauen steht. Wer eine Messung
+  festhält, will wissen, ob sie reproduzierbar ist — und das soll die Messung
+  selbst beantworten, nicht das Gefühl des Betrachters.
+- **Das Standbild sagt, dass es eines ist.** Über dem eingefrorenen Bild steht
+  „Standbild — Messreihe über 2,4 s". Ein stehendes Bild ohne diesen Satz hält
+  man für eine hängengebliebene Kamera.
 - **Erklärungen ausklappbar, je Verfahren eine**, und zweiteilig: erst das
   Phänomen wie ein kurzer Lexikoneintrag, dann wie die App es misst. Zwei
   verschiedene Fragen — die erste stellt sich jedem einmal, die zweite nur dem,
@@ -494,16 +559,40 @@ Skript in den Scratchpad schreiben und von dort ausführen.
 
 ## Nächster Schritt
 
-1. **M1 abnehmen.** Telefon, Farn, zehn Sekunden ruhig halten, auf die Zeile
+**Erst Reliabilität, dann M2.** Ein weiteres Verfahren, das dieselbe Unruhe
+erbt, macht die App nicht besser. Die Reihenfolge steht so, weil jeder Schritt
+den nächsten beurteilbar macht:
+
+1. **Messreihe am Gerät prüfen.** Blüte, Knopf drücken, ruhig halten. Abzulesen:
+   Wie viele von wie vielen? Bleibt derselbe Befund über mehrere Reihen stehen?
+   Und die Zeile „Bildunruhe" im Messprotokoll — bei ruhiger Hand und bei einem
+   absichtlichen Schwenk. Erst mit diesen zwei Zahlen lässt sich entscheiden, ob
+   die Schwelle für ein Bewegungstor gebraucht wird und wo sie liegt.
+2. **Peak mit Vorsprung (M4).** `parastichen()` nimmt den stärksten von 116
+   Kandidaten, ohne zu verlangen, dass er den zweitstärksten schlägt. Genau da
+   entsteht das Kippen zwischen 33, 34 und 55. Verlangt werden sollte ein
+   Vorsprung vor dem besten nicht benachbarten Konkurrenten; reicht er nicht,
+   meldet das Verfahren nichts. Gegen die Blütenstände und **alle** Fremdmotive
+   messen, bevor es in die UI geht.
+3. **Spektren mitteln statt Ergebnisse (M4).** Über die Bilder einer Reihe den
+   Betrag `|F(m,k)|` mitteln und *danach* den Gipfel suchen. Rauschen mittelt
+   sich heraus, der Gipfel bleibt — statistisch das Richtige, und es findet
+   Spiralen, die in keinem Einzelbild deutlich genug sind. Setzt Schritt 1
+   voraus: Über ein wanderndes Bild gemittelt entsteht Matsch.
+4. **Otsu-Schwelle über die Reihe stabilisieren (M1).** Der Schnitt springt von
+   Bild zu Bild um Graustufen, und jede Stufe verschiebt die feinste Zählung.
+   Der Median der Schwelle über die Reihe, auf alle Bilder der Reihe angewandt,
+   nimmt das heraus, ohne die Entscheidung „Otsu statt Perzentil" anzutasten —
+   die Dichte wandert weiter mit dem Motiv. **Danach `npm run kalibrierung`,
+   die Tabelle muss stehenbleiben.**
+5. **Autofokus sperren.** Wie die Belichtung, mit derselben Vorsicht:
+   `focusMode: 'manual'` mit mitgegebener `focusDistance` und Rückfahrt, wenn
+   das Bild dadurch unscharf wird. Er steht seit je an erster Stelle der
+   Verdächtigen für die Schwankung von M1.
+6. **M1 abnehmen.** Telefon, Farn, zehn Sekunden ruhig halten, auf die Zeile
    „Schwankung, 10 s" im Messprotokoll sehen. Unter 0,05 bei vollem Fenster:
-   erfüllt. Darüber: Verdächtige in dieser Reihenfolge — nachregelnder Autofokus
-   (die Belichtung ist gesperrt, der Fokus nicht), Bewegungsunschärfe bei wenig
-   Licht, Empfindlichkeit des Otsu-Schnitts bei kontrastarmen Motiven.
-2. **M4 an einem echten Blütenstand prüfen.** Die Kalibrierung steht gegen
-   gerechnete Muster; ein fotografierter Zapfen ist unordentlicher. Weicht es ab,
-   stehen die Zahlen im Messprotokoll: Spiralen je Richtung, Gipfelschärfe,
-   Struktur im Ring.
-3. **M2 — Spektralsteigung.** Die FFT steht. Radial mitteln, Abfall β bestimmen,
+   erfüllt.
+7. **M2 — Spektralsteigung.** Die FFT steht. Radial mitteln, Abfall β bestimmen,
    Anzeige als Zahl mit Einordnung (natürliche Szenen liegen nahe β ≈ 2). Mit
    Referenzbildern und Kalibriertabelle wie bei M1 und M4, und mit derselben
    Gegenprobe: Was meldet es auf Motiven, für die es nicht gedacht ist?
