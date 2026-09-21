@@ -29,6 +29,29 @@ Privatprojekt. Kein Produkt, kein Store, kein Nutzerkonto.
 117 Tests, 13 Dateien. `npm test` muss grün sein, bevor irgendetwas gepusht wird —
 der Workflow bricht sonst ab und veröffentlicht nicht.
 
+### Übergabe — wo wir stehen (21.09.2026)
+
+Live ist Commit `1ace76a`, Bauzeit **21.09.2026, 15:39** (UTC; Zeile „Stand"
+im Messprotokoll). Was seit dem ersten Feldtest geschah, in einem Absatz:
+Messreihe mit Standbild gebaut („Messung festhalten") → M1 damit
+reproduzierbar → M4 zappelte weiter → Diagnose: die Spiralenzählung per
+Fouriertransformation braucht die Blütenmitte pixelgenau (Mittelsuche gebaut)
+und zählt an echten Blüten trotzdem nicht → ersetzt durch die **Kettenzählung**
+(`metrics/ketten.ts`), die an gerechneten Blüten exakt und an echten ungefähr
+zählt und das auch so anzeigt. Unterwegs gefunden und behoben: das Messbild
+stand auf dem Kopf; die Anzeige zeigte Zahlen und Gold ohne Vertrauen.
+
+**Worauf gewartet wird:** der Feldtest der Kettenzählung am Telefon — echte
+Sonnenblume oder Zapfen, festhalten; ablesen, ob „≈ …" oder eine exakte Zahl
+steht, ob die gezeichneten Ketten den Blütchenreihen folgen und wie lange die
+Auswertung dauert. Danach [Nächster Schritt](#nächster-schritt), Punkt 2.
+
+**Arbeitsweise, die sich bewährt hat:** Jede Änderung an einem Verfahren erst
+mit dem Prüfskript an allen Motiven messen (`node scripts/ketten-probe.ts lang`,
+`npm run kalibrierung`), dann Tests, dann UI. Behauptungen über Ursachen erst
+nach einem Gegentest. Was nicht hilft, wieder herausnehmen und im Code
+vermerken, warum („Versucht und verworfen").
+
 **Der Feldtest hat den entscheidenden Mangel gezeigt:** Beide Verfahren werten
 je ein einzelnes Bild aus, und ein einzelnes Bild aus der Hand ist eine
 Zufallsgröße. Angezeigt wurde davon immer das jüngste — also der Zufall selbst.
@@ -44,8 +67,9 @@ misst und zeigt diese Schwankung selbst an (Messprotokoll, Zeile „Schwankung,
 jemand draußen gesehen hat, gilt M1 als gebaut, nicht als abgenommen.
 
 Die ursprünglich geplante Reihenfolge M1 → M2 → … wurde bewusst verlassen: Nach
-M1 wurde M4 vorgezogen, weil es das namensgebende Feature ist. M2 ist der
-naheliegende nächste Schritt, weil die FFT schon dasteht.
+M1 wurde M4 vorgezogen, weil es das namensgebende Feature ist. M2 folgt erst,
+wenn M4 am Gerät geprüft ist — ein weiteres Verfahren, das dieselben Schwächen
+erbt, macht die App nicht besser.
 
 ---
 
@@ -135,6 +159,7 @@ npm run dev
 | `npm run fixtures` | Referenzbilder als PNG nach `test/fixtures/` schreiben |
 | `npm run ornament` | Maske aus der Federzeichnung erzeugen |
 | `npm run icon` | App-Zeichen aus der Federzeichnung schneiden |
+| `node scripts/ketten-probe.ts [lang]` | Kettenzählung auf allen Motiven — **das wichtigste Werkzeug für M4** |
 
 Zusätzlich: `/pruefstand.html` im Entwicklungsserver vergleicht den Sobel-Shader
 Pixel für Pixel mit der CPU-Referenz. Ein Shader lässt sich nicht ohne Browser
@@ -478,15 +503,27 @@ Rauschen 2,0 — werden der Reihe nach getroffen.
 
 ### Blütenstände (M4)
 
-| Blütchen | gemessen |
-|---|---|
-| 200 · 400 | 21/34 |
-| 700 | 34/55 |
-| 1200 · 2000 · 3000 | 55/89 |
+Kettenzählung (`node scripts/ketten-probe.ts`), gerechnete Blütenstände nach
+Vogel, weichgezeichnet, verrauscht und um bis zu 20 Pixel versetzt — alle
+exakt, 100 %:
+
+| Blütchen | gemessen (tragender Bereich) | nach außen |
+|---|---|---|
+| 400 | 21/34 | 5/8 → 8/13 → 13/21 → 21/34 → 34/55 |
+| 700 | 34/55 | 5/8 → … → 34/55 → 55/89 |
+| 1200 · 2000 | 55/89 | 8/13 → … → 55/89 (2000: → 89/144) |
 
 Welches Paar sichtbar wird, hängt vom Radius ab: Die Blütchen bleiben gleich
-groß, der Umfang wächst nach außen. Deshalb wertet das Verfahren einen Kreisring
-aus (0,40 bis 0,97 des halben Bildes), nicht die ganze Scheibe.
+groß, der Umfang wächst nach außen. Deshalb zählt das Verfahren an 21 Kreisen
+von 0,15 bis 0,97 des Randabstands (`KETTEN_RING`) und nicht einmal für die
+ganze Scheibe. Die Fourierzählung (`npm run kalibrierung`, `parastichen-probe`)
+trifft dieselben Paare an gerechneten Blüten; sie ist nur an echten gescheitert.
+
+Echte Blütenstände: siehe [Die Kettenzählung](#die-kettenzählung). Die
+Zuschnitte dafür entstehen so (Windows PowerShell, `System.Drawing`):
+Ausschnitt so wählen, dass der Blütenstand das Quadrat füllt, auf 512 × 512
+bikubisch verkleinern, als PNG nach `test/test_messungen/3/zuschnitt/`. Nie
+anderswohin.
 
 ### Die Schwellen und woher sie kommen
 
@@ -498,7 +535,17 @@ Nach unten: Bei einem Pixel Kästchenbreite zählt das Verfahren Pixel statt
 Struktur. Nach oben: Kästchen ab 64 Pixeln erfassen nur noch den Umriss.
 Schwellwert nach **Otsu**, Untergrenze 8 auf dem durch 4 geteilten Sobel-Betrag.
 
-**Parastichen.** Zwei Tore, beide müssen offen sein:
+**Kettenzählung.** Ein Gitter zählt an einem Ring nur mit, wenn beide Scharen
+regelmäßig kreuzen (`REGELMAESSIG_AB` 0,6) und zwei *verschiedene* Zahlen
+ergeben (gleiche heißen Rechteckgitter). Ein Ring zählt ab 3 Gittern je Bild
+(`GITTER_MINDEST`), exakt ab 4 je Bild und mehrheitlicher Einigkeit
+(`EXAKT_GITTER`, `EXAKT_EINIG`). Ungefähr höchstens 0,5 Vertrauen
+(`UNGEFAEHR_HOECHSTENS`). Alle an `ketten-probe.ts` gemessen; die Grenzen
+zwischen „Fremdmotiv meldet nichts" und „echte Blüte meldet ungefähr" sind
+schmal — wer sie verschiebt, misst beide Seiten neu.
+
+**Fourierzählung (nur noch Mittelsuche und Vergleich).** Zwei Tore, beide
+müssen offen sein:
 
 | Motiv | Struktur im Ring | Gipfelhöhe |
 |---|---|---|
@@ -568,7 +615,8 @@ Warum so umständlich: siehe [Fallstricke](#fallstricke).
 - **Niedrige Konfidenz zeigt die App als solche an** — die Zahl tritt zurück,
   daneben steht der Grund („zu wenig Kontrast", „zu wenig Struktur — kein
   Blütenstand im Bild"). Ohne Vertrauen gar keine Zahl, sondern ein Strich.
-- **Gold hat genau zwei Anlässe:** ein gefundenes Fibonacci-Paar und die erfüllte
+- **Gold hat genau zwei Anlässe:** ein *exakt gezähltes* Fibonacci-Paar mit
+  Vertrauen ab 0,6 (`VERTRAUEN_GUT`) und die erfüllte
   Abnahmebedingung von M1. Sonst nirgends.
 - **Ein festgehaltener Wert sagt, worauf er sich stützt.** „einig in 41 von 58
   Messungen" steht dort, wo sonst nur das Vertrauen steht. Wer eine Messung
