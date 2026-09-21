@@ -21,12 +21,12 @@ Privatprojekt. Kein Produkt, kein Store, kein Nutzerkonto.
 | Meilenstein | Zustand |
 |---|---|
 | **M1 — Box-Counting** | gebaut, kalibriert, läuft am Gerät |
-| **M4 — Parastichen** | gebaut, gegen Blütenstände nach Vogel kalibriert |
+| **M4 — Parastichen** | gebaut, mit Mittelsuche; nur beim Festhalten. **An einem echten Foto noch nie gefunden** |
 | M2 — Spektralsteigung | offen (die FFT dafür steht bereits in `metrics/fft.ts`) |
 | M3 — Rotationssymmetrie | offen (Log-Polar steht bereits in `metrics/logPolar.ts`) |
 | M5 — Packung / Voronoi | offen |
 
-84 Tests, 11 Dateien. `npm test` muss grün sein, bevor irgendetwas gepusht wird —
+99 Tests, 12 Dateien. `npm test` muss grün sein, bevor irgendetwas gepusht wird —
 der Workflow bricht sonst ab und veröffentlicht nicht.
 
 **Der Feldtest hat den entscheidenden Mangel gezeigt:** Beide Verfahren werten
@@ -142,7 +142,8 @@ testen; das ist der Ersatz. Erwartet: alle Pixel innerhalb von 1 von 255.
 
 Weitere Prüfskripte ohne festen Sollwert, zum Nachsehen beim Kalibrieren:
 `gemeinsam-probe.ts` (beide Verfahren auf allen Motiven, plus Rechenzeit),
-`spektrum-probe.ts` (Log-Polar-Spektren im Vergleich), `parastichen-probe.ts`.
+`spektrum-probe.ts` (Log-Polar-Spektren im Vergleich), `parastichen-probe.ts`,
+`mittelsuche-probe.ts` (Mittelsuche auf allen Motiven, mit Rechenzeit).
 
 ### Aufs Telefon
 
@@ -186,6 +187,7 @@ src/
 test/fixtures/ images.ts        Sierpinski, Koch, Rauschen, leer
                scenes.ts        Wand, Backstein, fBm, Verzweigungsbaum, Weichzeichner
                phyllotaxis.ts   Blütenstände nach Vogel
+               stoerung.ts      verschieben, verrauschen — wie draußen
 test/fotos/                     echte Fotos, eingecheckt (fixtures/*.png sind erzeugt und ignoriert)
 scripts/       png.ts           gemeinsamer PNG-Leser und -Schreiber
 ```
@@ -228,8 +230,9 @@ Erklärtexte selbst mit; die Anzeige kennt kein einziges Verfahren beim Namen.**
 Alle Verfahren laufen **gleichzeitig**, es wird nichts umgeschaltet. Die App soll
 sagen, was im Bild steckt, nicht fragen, wonach man suchen will.
 
-- `jedesNte` staffelt die teureren. Box-Counting 4,4 ms bei jedem Bild,
-  Parastichen 5,3 ms bei jedem dritten (Zeiten vom Entwicklungsrechner).
+- `jedesNte` staffelt die teureren. Box-Counting 4,4 ms bei jedem Bild
+  (Zeit vom Entwicklungsrechner). Die Spiralenzählung läuft nicht mehr in der
+  Schleife, siehe `nurFestgehalten`.
 - `stetig` sagt, ob geglättet werden darf. Eine Spiralenzahl ist ganzzahlig; ein
   Mittel aus 34 und 55 wäre 44,5 und damit eine Zahl, die es nicht gibt.
 - `spezifisch` heißt: Das Verfahren passt nur auf bestimmte Motive. Ein
@@ -239,6 +242,11 @@ sagen, was im Bild steckt, nicht fragen, wonach man suchen will.
   fast nie.
 - Ein Wechsel des Hauptbefundes braucht 0,15 Vorsprung, sonst springt die
   Überschrift bei jedem Bild.
+- `nurFestgehalten`: Die Spiralenzählung rechnet **nicht live**. Während einer
+  Reihe legt die Schleife sechs Bilder im Abstand von 350 ms beiseite; gezählt
+  wird nach dem Festhalten, mit Mittelsuche, in Häppchen, damit die Anzeige
+  nicht stillsteht (Zustand `auswertung`). Live steht in ihrer Zeile nur die
+  Anleitung.
 - **Während einer Messreihe rechnet jedes Verfahren bei jedem Bild.** Die
   Staffelung spart Rechenzeit im Dauerbetrieb; in den zweieinhalb Sekunden einer
   Reihe ist jede Einzelmessung eine Stimme.
@@ -299,6 +307,50 @@ Zahl, sondern Strich und Grund — live, als Stimme in der Reihe und im
 festgehaltenen Befund. Gold, Nachzeichnung und Hauptplatz erst ab
 `VERTRAUEN_GUT` (0,6). Die beiden Fotos liegen als `test/fotos/`
 bei und müssen unter der Anzeigegrenze bleiben.
+
+### Die Blütenmitte muss gesucht werden
+
+Die ehrliche Bestandsaufnahme nach dem ersten Feldtest ergab: Die
+Spiralenzählung hätte draußen **nie** funktionieren können, auch nicht an einer
+perfekten Sonnenblume. Sie rollte das Bild um die Bildmitte ab und nahm damit
+an, dort liege die Blütenmitte — auf etwa einen Pixel genau.
+
+Warum so genau: Verschiebt man die Mitte um δ, verrutscht jede der m Spiralen
+am inneren Messring (Radius r ≈ 100 Pixel) um etwa m·δ/r im Winkel. Ab etwa
+einer Einheit ist das Muster zerstört. Für 89 Spiralen heißt das gut ein Pixel.
+Gemessen an gerechneten Blütenständen, weichgezeichnet und verrauscht:
+
+| Blütchen | 0 px | 2 px | 4 px | 8 px |
+|---|---|---|---|---|
+| 400 (21/34) | 100 % | 45 % | 2 % | 0 % |
+| 700 (34/55) | 100 % | 72 % | 17 % | 0 % |
+| 2000 (55/89) | 100 % | 14 % | 0 % | 0 % |
+
+**Das ist kein Problem der Hand, sondern des Zielens** — auch ein Stativ hilft
+nicht, solange niemand die Blüte pixelgenau mittig stellt. Und es war nie
+aufgefallen, weil die Kalibrierung nur exakt zentrierte Blütenstände kannte.
+
+**`sucheMitte()`**: Bergsteigen auf der Gipfelschärfe, vorher ein grobes Raster
+von 5 × 5 Punkten im Abstand 16. Findet die Mitte auf einen Pixel genau, bei
+Versatz bis mindestens ±45 Pixel (ein Sechstel des Bildes); 0,2 bis 0,6 s am
+Entwicklungsrechner. Ohne Raster blieb der Aufstieg einmal an einem
+Nebengipfel hängen. In der Reihe bekommt nur das erste Bild die volle Suche,
+die weiteren steigen von der zuletzt gefundenen Mitte aus.
+
+**Wer sucht, findet auch im Rauschen etwas.** Die Suche hob das Vertrauen der
+Fotos von 9 auf 20 % (Dahlie) und 0 auf 15 % (Zinnie). Für gesuchte Befunde
+gilt deshalb Gipfelhöhe ab **60** statt 30, gemessen mit
+`scripts/mittelsuche-probe.ts`:
+
+| nach der Suche | Gipfelhöhe |
+|---|---|
+| Blütenstände, auch verrauscht und versetzt | 90,6 – 157 |
+| Fremdmotive mit zwei verschiedenen Zahlen | höchstens 53,6 (Foto Zinnie) |
+| fraktale Fläche | 85, aber in beiden Richtungen dieselbe Zahl — schließt aus |
+
+**Noch nicht gemessen, nur überschlagen:** Neigung. Schräg gehalten wird der
+Kreis zur Ellipse, mit ähnlicher Wirkung wie ein falscher Mittelpunkt. 21/34
+verträgt nach der Überschlagsrechnung 15 bis 20 Grad, 55/89 eher ±10.
 
 ### Bildunruhe
 
@@ -383,7 +435,8 @@ Schwellwert nach **Otsu**, Untergrenze 8 auf dem durch 4 geteilten Sobel-Betrag.
 | glatte Wand | 6,1 | 7 |
 | Rauschen | 23 | 4 |
 
-Daraus: Struktur mindestens 10, Gipfelhöhe mindestens 30. Der Abstand zwischen
+Daraus: Struktur mindestens 10, Gipfelhöhe mindestens 30 — nach einer
+Mittelsuche mindestens 60 (siehe [Reliabilität](#reliabilität)). Der Abstand zwischen
 den Gruppen ist die eigentliche Aussage, nicht die Schwelle selbst.
 
 ### Zwei Entscheidungen gegen das Naheliegende
@@ -439,6 +492,16 @@ Warum so umständlich: siehe [Fallstricke](#fallstricke).
   Messungen" steht dort, wo sonst nur das Vertrauen steht. Wer eine Messung
   festhält, will wissen, ob sie reproduzierbar ist — und das soll die Messung
   selbst beantworten, nicht das Gefühl des Betrachters.
+- **Über dem Bild liegt auch der Zielring** — zwei gestrichelte Kreise, wo die
+  Spiralen gezählt werden, und ein Kreuz in der Mitte.
+  *Abweichung von „nur die Nachzeichnung": Der Ring behauptet nichts über das
+  Bild, er zeigt, wo gemessen wird — wie die Eckmarken. In Papierfarbe, nicht
+  in Grünspan, damit er nicht wie ein Befund aussieht. Am Standbild
+  verschwindet er. Die Radien kommen aus `LOGPOLAR_STANDARD`.*
+  *Verworfen wurde eine eingeblendete Goldene Spirale: Ihr Zentrum liegt nicht
+  in der Mitte, sie kommt in keiner Sonnenblume vor, und als feste Kurve passt
+  sie auf jedes Motiv ein bisschen — genau die Zahlenmystik, die die App nicht
+  betreibt. Sie steht jetzt im Erklärtext, als das, was sie nicht ist.*
 - **Das Standbild sagt, dass es eines ist.** Über dem eingefrorenen Bild steht
   „Standbild — Messreihe über 2,4 s". Ein stehendes Bild ohne diesen Satz hält
   man für eine hängengebliebene Kamera.
@@ -570,6 +633,19 @@ die UI geht: gegen alle Fremdmotive prüfen, nicht nur gegen die eigenen
 Referenzbilder.** Der gefährlichere Fehler ist nie, etwas zu übersehen, sondern
 etwas zu behaupten.
 
+**Nur am Idealfall kalibriert.** Die Spiralenzählung bestand jede Prüfung —
+gegen Blütenstände, die exakt in der Bildmitte lagen. Die naheliegendste
+Störung im Feld, eine Blüte knapp daneben, hat niemand ausprobiert; vier Pixel
+genügten, um alles zu zerstören. `test/fixtures/stoerung.ts` verschiebt und
+verrauscht deshalb. **Jedes Verfahren wird auch gegen die Störungen geprüft,
+die draußen sicher eintreten.**
+
+**Das Messbild stand auf dem Kopf.** `readPixels` liefert die unterste Zeile
+zuerst, der Frame zählt von oben. Die Zählungen hängen nicht davon ab, der
+Prüfstand verglich das Bild mit sich selbst — so fiel es lange nicht auf. Erst
+Nachzeichnung und Mittelsuche brauchen die richtige Lage. `poll()` kehrt die
+Zeilen jetzt um, und der Prüfstand hat eine Zeile „Ausrichtung".
+
 **Ein Verfahren, das nichts findet, und eine Anzeige, die es trotzdem sagt.**
 Die Spiralenzählung meldete auf einer Zinnie selbst 1 % Vertrauen — die Anzeige
 schrieb „5/8" in Gold daneben. Die Regel „ohne Vertrauen keine Zahl" stand im
@@ -599,26 +675,21 @@ Skript in den Scratchpad schreiben und von dort ausführen.
 erbt, macht die App nicht besser. Die Reihenfolge steht so, weil jeder Schritt
 den nächsten beurteilbar macht:
 
-1. **M4 an einem echten Blütenstand prüfen — mit formatfüllender Mitte.** Für
-   M1 ist die Messreihe am Gerät bestätigt (siehe Feldtest). Für M4 steht der
-   Beweis aus, dass das Verfahren an einem Foto überhaupt etwas findet: Dahlie
-   und Zinnie zeigten Blütenblätter, keine Blütchen. Motive, bei denen die
-   Spiralen die Fläche füllen: Sonnenblumenmitte, Kiefernzapfen von unten,
-   Kamille- oder Sonnenhutmitte, Romanesco, Hauswurz- und Echeverienrosetten.
-   Erreicht auch dort nichts Gipfelhöhe 90, liegt der Mangel im Verfahren
-   (Mittelpunkt, Ringbreite, Auflösung) und nicht am Motiv. Dazu weiterhin die
-   Zeile „Bildunruhe" — ruhige Hand gegen absichtlichen Schwenk.
-2. **Peak mit Vorsprung (M4).** `parastichen()` nimmt den stärksten von 116
-   Kandidaten, ohne zu verlangen, dass er den zweitstärksten schlägt. Genau da
-   entsteht das Kippen zwischen 33, 34 und 55. Verlangt werden sollte ein
-   Vorsprung vor dem besten nicht benachbarten Konkurrenten; reicht er nicht,
-   meldet das Verfahren nichts. Gegen die Blütenstände und **alle** Fremdmotive
-   messen, bevor es in die UI geht.
+1. **M4 am echten Blütenstand prüfen — jetzt mit Mittelsuche.** Sonnenblume,
+   Kiefernzapfen von unten, Sonnenhut, Romanesco, Hauswurz. Blütenmitte ungefähr
+   ins Kreuz, Blütenstand füllt den Ring, festhalten. Abzulesen im Messprotokoll:
+   Gipfelschärfe (ab 60 zählt es, ab 90 ist es sicher) und „Blütenmitte neben
+   Bildmitte". **Erreicht auch damit kein echtes Foto 60, wird M4 als
+   experimentell gekennzeichnet oder herausgenommen** — statt weiter an
+   Schwellen zu drehen. Die Nachzeichnung ist dabei der Beleg: Folgen die Linien
+   den Gassen zwischen den Blütchen, stimmt die Zählung.
+2. **Neigung messen (M4).** Gerechnete Blütenstände gestaucht (Ellipse statt
+   Kreis) durch die Kette schicken, wie bei der Verschiebung. Zeigt sich, dass
+   schon 10 Grad genügen, braucht die Suche eine Achse mehr.
 3. **Spektren mitteln statt Ergebnisse (M4).** Über die Bilder einer Reihe den
-   Betrag `|F(m,k)|` mitteln und *danach* den Gipfel suchen. Rauschen mittelt
-   sich heraus, der Gipfel bleibt — statistisch das Richtige, und es findet
-   Spiralen, die in keinem Einzelbild deutlich genug sind. Setzt Schritt 1
-   voraus: Über ein wanderndes Bild gemittelt entsteht Matsch.
+   Betrag `|F(m,k)|` mitteln und *danach* den Gipfel suchen — jetzt, da jedes
+   Bild seine eigene Mitte hat, geht das. Findet Spiralen, die in keinem
+   Einzelbild deutlich genug sind.
 4. **Otsu-Schwelle über die Reihe stabilisieren (M1).** Der Schnitt springt von
    Bild zu Bild um Graustufen, und jede Stufe verschiebt die feinste Zählung.
    Der Median der Schwelle über die Reihe, auf alle Bilder der Reihe angewandt,

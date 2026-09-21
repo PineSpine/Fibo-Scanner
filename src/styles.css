@@ -285,6 +285,46 @@ body {
   pointer-events: none;
 }
 
+/*
+ * Der Zielring zeigt, wo die Spiralen gezählt werden. In Papierfarbe wie die
+ * Eckmarken, nicht in Grünspan: Grünspan sind die nachgezeichneten Spiralen,
+ * und eine Hilfslinie darf nicht wie ein Befund aussehen. Gestrichelt und
+ * zurückhaltend, damit er das Motiv nicht verdeckt, das man anvisiert.
+ *
+ * Am Standbild verschwindet er. Dann liegt dort die gefundene Mitte samt
+ * Spiralen, und ein zweiter Mittelpunkt daneben wäre verwirrend.
+ */
+.zielring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.zielring .ring,
+.zielring .kreuz {
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 1.1;
+  opacity: 0.75;
+  vector-effect: non-scaling-stroke;
+}
+
+.zielring .ring {
+  stroke-dasharray: 3 4;
+}
+
+.zielring .kreuz {
+  stroke-width: 1.4;
+  opacity: 0.9;
+}
+
+.platte[data-modus='fest'] .zielring,
+.platte[data-modus='auswertung'] .zielring {
+  display: none;
+}
+
 .ecke {
   fill: none;
   stroke: var(--paper);

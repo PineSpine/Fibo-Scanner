@@ -81,10 +81,11 @@ const DETAIL_NAMEN: Readonly<Record<string, string>> = {
   schaerfeLinks: 'Gipfelschärfe, eine',
   schaerfeRechts: 'Gipfelschärfe, andere',
   treffer: 'Fibonacci-Paar',
+  versatz: 'Blütenmitte neben Bildmitte, Pixel',
 };
 
 /** Zwischenwerte, die niemandem etwas sagen, bleiben aus dem Protokoll heraus. */
-const DETAIL_VERBORGEN = new Set(['side']);
+const DETAIL_VERBORGEN = new Set(['side', 'gesucht']);
 
 function detailWert(schluessel: string, wert: number): string {
   if (schluessel === 'treffer') return wert === 1 ? 'ja' : 'nein';

@@ -6,6 +6,7 @@ import {
   createParastichenMetric,
   parastichen,
   parastichenErgebnis,
+  sucheMitte,
 } from '../src/metrics/parastichen.ts';
 import { VERTRAUEN_GERING } from '../src/calibration/messreihe.ts';
 
@@ -44,6 +45,16 @@ describe('Echte Blüten, ganze Blüte im Bild: keine Spiralaussage', () => {
       // Ohne Grund stünde in der Anzeige nur ein Strich. Wer draußen steht,
       // soll erfahren, was er anders machen kann.
       expect(r.caveats.length).toBeGreaterThan(0);
+    });
+  }
+
+  for (const name of ['dahlie.png', 'zinnie.png']) {
+    it(`${name}: auch mit Mittelsuche kein Befund`, () => {
+      // Die Suche hob das Vertrauen hier von 9 auf 20 % (Dahlie) und von 0 auf
+      // 15 % (Zinnie) -- mit der Schwelle für ungesuchte Befunde lägen beide
+      // wieder über der Anzeigegrenze. Genau dafür gibt es die strengere.
+      const r = parastichenErgebnis(sucheMitte(lade(name)));
+      expect(metrik.confidence(r)).toBeLessThan(VERTRAUEN_GERING);
     });
   }
 

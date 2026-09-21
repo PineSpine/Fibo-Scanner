@@ -7,6 +7,12 @@ export interface Nachzeichner {
     familien: readonly [Spiralfamilie, Spiralfamilie],
     treffer: boolean,
     optionen: LogPolarOptionen,
+    /**
+     * Um welchen Punkt gemessen wurde, als Anteil des Messbilds (0..1). Die
+     * Blütenmitte liegt fast nie in der Bildmitte -- gezeichnet wird dort, wo
+     * die Suche sie gefunden hat, sonst lägen die Linien neben den Spiralen.
+     */
+    mitte: { x: number; y: number },
   ): void;
   /** Nichts gefunden, also nichts zeichnen. */
   loeschen(): void;
@@ -36,6 +42,8 @@ function pfad(
   rInnen: number,
   rAussen: number,
   nRadius: number,
+  mx: number,
+  my: number,
 ): string {
   const schritt = Math.log(rAussen / rInnen) / (nRadius - 1);
   const teile: string[] = [];
@@ -45,8 +53,8 @@ function pfad(
     const winkel =
       ((2 * Math.PI) / familie.arme) *
       (k - familie.phase / (2 * Math.PI) - (familie.radiusFrequenz * j) / nRadius);
-    const x = 50 + r * Math.cos(winkel);
-    const y = 50 + r * Math.sin(winkel);
+    const x = mx + r * Math.cos(winkel);
+    const y = my + r * Math.sin(winkel);
     teile.push(`${p === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`);
   }
   return teile.join(' ');
@@ -56,13 +64,13 @@ export function createNachzeichner(svg: SVGSVGElement): Nachzeichner {
   let letzteForm = '';
 
   return {
-    spiralen(familien, treffer, optionen): void {
+    spiralen(familien, treffer, optionen, mitte): void {
       // Neu gezeichnet wird nur, wenn sich der Befund ändert. Bei dreißig
       // Bildern je Sekunde jedes Mal hundert Pfade zu ersetzen, würde die
       // Messung ausbremsen, die sie darstellen sollen.
       const form = familien
         .map((f) => `${f.arme}:${f.radiusFrequenz}:${f.phase.toFixed(2)}`)
-        .join('|') + (treffer ? '!' : '');
+        .join('|') + (treffer ? '!' : '') + `@${mitte.x.toFixed(4)},${mitte.y.toFixed(4)}`;
       if (form === letzteForm) return;
       letzteForm = form;
 
@@ -71,13 +79,15 @@ export function createNachzeichner(svg: SVGSVGElement): Nachzeichner {
       // mittigen quadratischen Ausschnitt, dessen halbe Kante 50 % entspricht.
       const rInnen = optionen.innen * 50;
       const rAussen = optionen.aussen * 50;
+      const mx = mitte.x * 100;
+      const my = mitte.y * 100;
 
       for (const familie of familien) {
         if (familie.arme < 2) continue;
         const abstand = Math.max(1, Math.ceil(familie.arme / ARME_HOECHSTENS));
         for (let k = 0; k < familie.arme; k += abstand) {
           const linie = document.createElementNS(NS, 'path');
-          linie.setAttribute('d', pfad(familie, k, rInnen, rAussen, optionen.nRadius));
+          linie.setAttribute('d', pfad(familie, k, rInnen, rAussen, optionen.nRadius, mx, my));
           linie.setAttribute('class', treffer ? 'spirale spirale-treffer' : 'spirale');
           svg.append(linie);
         }

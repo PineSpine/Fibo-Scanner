@@ -56,6 +56,18 @@ export interface ParastichenRoh {
    * von Gipfel zu Untergrund bedeutungslos -- man teilt Rauschen durch Rauschen.
    */
   streuung: number;
+  /** Um welchen Punkt abgerollt wurde, in Pixeln des Frames. */
+  mitte: { x: number; y: number };
+  /**
+   * Abstand dieses Punkts von der Bildmitte, in Pixeln. Groß heißt: das
+   * Zielen war ungenau, und die Suche hat es ausgeglichen.
+   */
+  versatz: number;
+  /**
+   * Ob die Mitte gesucht wurde. Wer sucht, findet auch im Rauschen den besten
+   * von achtzig Versuchen -- dafür gilt eine strengere Schwelle.
+   */
+  gesucht: boolean;
 }
 
 /**
@@ -87,6 +99,18 @@ const GIPFEL_MINDEST = 30;
  */
 const GIPFEL_VOLL = 90;
 const STRUKTUR_VOLL = 22;
+
+/**
+ * Untere Schwelle, wenn die Mitte gesucht wurde.
+ *
+ * Wer achtzig Mittelpunkte ausprobiert, nimmt den besten -- auch dort, wo es
+ * nichts zu finden gibt. Gemessen nach der Suche (scripts/mittelsuche-probe.ts):
+ * Fremdmotive mit zwei verschiedenen Spiralzahlen höchstens 53,6 (Foto Zinnie),
+ * Dahlie 47,3, Rauschen 4,5. Fraktale Fläche erreicht 85, aber in beiden
+ * Richtungen dieselbe Zahl, was ohnehin ausschließt. Blütenstände, auch
+ * verrauscht und um bis zu 45 Pixel versetzt: 90,6 bis 157.
+ */
+const GIPFEL_MINDEST_GESUCHT = 60;
 
 /**
  * Eine gefundene Spiralfamilie, so vollständig, dass sie sich nachzeichnen
@@ -131,14 +155,26 @@ export function parastichen(
   frame: Frame,
   optionen: ParastichenOptionen = PARASTICHEN_STANDARD,
 ): ParastichenRoh {
-  const bild = logPolar(
-    frame.gray,
-    frame.width,
-    frame.height,
-    frame.width / 2,
-    frame.height / 2,
-    optionen.logPolar,
-  );
+  return parastichenUm(frame, frame.width / 2, frame.height / 2, optionen);
+}
+
+/**
+ * Wie `parastichen`, aber um einen frei gewählten Mittelpunkt.
+ *
+ * Die Bildmitte ist fast nie die Blütenmitte. Und die Toleranz ist winzig:
+ * Verschiebt man die Mitte um δ, verrutscht jede der m Spiralen am inneren
+ * Messring (Radius r) um etwa m·δ/r im Winkel. Ab etwa einer Einheit ist das
+ * Muster zerstört. Bei r ≈ 100 Pixeln und 89 Spiralen heißt das: gut ein
+ * Pixel. Gemessen an gerechneten, verrauschten Blütenständen: Bei 4 Pixeln
+ * Versatz fällt 55/89 von 100 % Vertrauen auf null.
+ */
+export function parastichenUm(
+  frame: Frame,
+  cx: number,
+  cy: number,
+  optionen: ParastichenOptionen = PARASTICHEN_STANDARD,
+): ParastichenRoh {
+  const bild = logPolar(frame.gray, frame.width, frame.height, cx, cy, optionen.logPolar);
 
   let quadratsumme = 0;
   for (const v of bild.daten) quadratsumme += v * v;
@@ -203,7 +239,95 @@ export function parastichen(
       benachbarteFibonacci(besterPlus.arme, besterMinus.arme),
     untergrund,
     streuung,
+    mitte: { x: cx, y: cy },
+    versatz: Math.hypot(cx - frame.width / 2, cy - frame.height / 2),
+    gesucht: false,
   };
+}
+
+/** Wie gut ein Mittelpunkt ist: die schwächere der beiden Gipfelschärfen. */
+function guete(roh: ParastichenRoh): number {
+  return Math.min(roh.schaerfeLinks, roh.schaerfeRechts);
+}
+
+/**
+ * Wie weit die gesuchte Mitte höchstens von der Bildmitte abrücken darf, als
+ * Anteil der Bildkante. Weiter draußen läuft der äußere Messring aus dem Bild,
+ * und was dann gezählt wird, ist zur Hälfte leerer Rand.
+ */
+const VERSATZ_HOECHSTENS = 0.15;
+
+/** Nachbarn beim Bergsteigen: die acht Richtungen. */
+const RICHTUNGEN: ReadonlyArray<readonly [number, number]> = [
+  [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
+];
+
+/**
+ * Sucht die Blütenmitte im Bild selbst, statt sie in der Bildmitte anzunehmen.
+ *
+ * Verfahren: Bergsteigen auf der Gipfelschärfe. Von einem Startpunkt aus
+ * werden die acht Nachbarn im Abstand `schritt` gemessen; ist einer besser,
+ * geht es dorthin, sonst wird der Schritt halbiert -- bis auf einen Pixel.
+ * Die Schärfe fällt zur echten Mitte hin gleichmäßig an (gemessen: 118 bei
+ * 0 Pixeln, 44 bei 2, 29 bei 4, 20 bei 8, 14 bei 16), deshalb findet der
+ * Aufstieg den Gipfel, obwohl er schmal ist.
+ *
+ * Ohne `start` wird vorher ein grobes Raster von 5 × 5 Punkten im Abstand 16
+ * um die Bildmitte gelegt und vom besten aus gestiegen. Ein einzelner
+ * Aufstieg von der Bildmitte blieb bei großem Versatz einmal an einem
+ * Nebengipfel hängen; das Raster fängt das ab. Mit `start` -- der Mitte aus
+ * dem vorigen Bild einer Reihe -- genügt der Aufstieg allein, denn die Hand
+ * bewegt sich zwischen zwei Bildern nur um wenige Pixel.
+ *
+ * Kosten: 60 bis 90 Messungen um je einen Punkt, 0,2 bis 0,6 Sekunden auf dem
+ * Entwicklungsrechner. Für die laufende Anzeige zu teuer, für eine
+ * festgehaltene Messung angemessen.
+ */
+export function sucheMitte(
+  frame: Frame,
+  optionen: ParastichenOptionen = PARASTICHEN_STANDARD,
+  start?: { x: number; y: number },
+): ParastichenRoh {
+  const mx = frame.width / 2;
+  const my = frame.height / 2;
+  const grenze = VERSATZ_HOECHSTENS * Math.min(frame.width, frame.height);
+  const erlaubt = (x: number, y: number): boolean =>
+    Math.abs(x - mx) <= grenze && Math.abs(y - my) <= grenze;
+
+  let beste: ParastichenRoh;
+  let schritt: number;
+
+  if (start && erlaubt(start.x, start.y)) {
+    beste = parastichenUm(frame, start.x, start.y, optionen);
+    schritt = 4;
+  } else {
+    beste = parastichenUm(frame, mx, my, optionen);
+    for (let j = -2; j <= 2; j++) {
+      for (let i = -2; i <= 2; i++) {
+        if (i === 0 && j === 0) continue;
+        const kandidat = parastichenUm(frame, mx + i * 16, my + j * 16, optionen);
+        if (guete(kandidat) > guete(beste)) beste = kandidat;
+      }
+    }
+    schritt = 8;
+  }
+
+  // Obergrenze nur als Sicherung -- auf den Prüfbildern endet der Aufstieg
+  // nach höchstens gut zehn Zügen.
+  for (let zuege = 0; schritt >= 1 && zuege < 60; zuege++) {
+    let besser: ParastichenRoh | null = null;
+    for (const [dx, dy] of RICHTUNGEN) {
+      const x = beste.mitte.x + dx * schritt;
+      const y = beste.mitte.y + dy * schritt;
+      if (!erlaubt(x, y)) continue;
+      const kandidat = parastichenUm(frame, x, y, optionen);
+      if (guete(kandidat) > guete(besser ?? beste)) besser = kandidat;
+    }
+    if (besser) beste = besser;
+    else schritt /= 2;
+  }
+
+  return { ...beste, gesucht: true };
 }
 
 /**
@@ -222,9 +346,10 @@ export function parastichenErgebnis(roh: ParastichenRoh): Result {
   const klein = Math.min(roh.links, roh.rechts);
   const gross = Math.max(roh.links, roh.rechts);
   const schwaechere = Math.min(roh.schaerfeLinks, roh.schaerfeRechts);
+  const mindest = roh.gesucht ? GIPFEL_MINDEST_GESUCHT : GIPFEL_MINDEST;
 
   if (roh.streuung < STRUKTUR_MINDEST) caveats.push('zu wenig Struktur – kein Blütenstand im Bild');
-  else if (schwaechere < GIPFEL_MINDEST) caveats.push('keine deutlichen Spiralen – frontal und formatfüllend halten');
+  else if (schwaechere < mindest) caveats.push('keine deutlichen Spiralen – frontal und formatfüllend halten');
   else if (roh.links === roh.rechts) caveats.push('nur eine Spiralfamilie erkennbar');
   // Die Tore sind offen, aber nicht weit: Das Vertrauen bleibt gering, und
   // ohne diesen Satz stünde in der Anzeige kein Grund dafür. Der Rat ist
@@ -249,6 +374,8 @@ export function parastichenErgebnis(roh: ParastichenRoh): Result {
       schaerfeLinks: roh.schaerfeLinks,
       schaerfeRechts: roh.schaerfeRechts,
       treffer: roh.treffer ? 1 : 0,
+      gesucht: roh.gesucht ? 1 : 0,
+      versatz: roh.versatz,
     },
     caveats,
   };
@@ -277,12 +404,15 @@ export function createParastichenMetric(
       "Diese Reihe heißt Fibonacci-Folge. Jede Zahl darin ist die Summe der beiden davor: 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89.",
       "Der Grund dafür ist keine Zahlenmagie, sondern Platzmangel. Eine Pflanze setzt ein Blütchen nach dem anderen an und dreht sich dabei jedes Mal um denselben Winkel weiter. Wäre dieser Winkel ein glatter Bruchteil des Vollkreises — ein Drittel etwa —, säße jedes dritte Blütchen genau über dem ersten und nähme ihm das Licht. Der Winkel, bei dem sich am wenigsten überdeckt, liegt bei rund 137,5 Grad. Aus ihm entstehen die Spiralen von selbst, und ihre Anzahlen sind genau die Fibonacci-Zahlen.",
       "In der Fachsprache heißen die Spiralarme Parastichen.",
+      "Die bekannte Spirale aus ineinandergesetzten Quadraten, das Bild vom Goldenen Schnitt, ist etwas anderes. Sie ist eine einzige Spirale, die mit jeder Vierteldrehung um den Faktor 1,618 wächst — und sie kommt in einer Sonnenblume nicht vor. Dort liegen viele flachere Spiralen in zwei Scharen nebeneinander. Mit dem Goldenen Schnitt hat der Blütenstand trotzdem zu tun: über den Winkel von 137,5 Grad, der den Vollkreis im Goldenen Schnitt teilt, nicht über die Form einer Spirale.",
     ],
 
     verfahren: [
       "Die App rollt das Bild um seine Mitte ab: waagerecht der Winkel, senkrecht der Abstand zur Mitte. In dieser Darstellung wird aus jeder Spirale eine schräge Gerade — und wie oft ein solches Muster den Kreis umrundet, lässt sich abzählen. Genau das ist die Zahl der Spiralarme.",
-      "Findet die App zwei Familien, legt sie sie als Linien ins Kamerabild, dorthin, wo sie gemessen wurden. Sind die beiden Zahlen in der Fibonacci-Folge benachbart, färben sie sich ockergolden.",
-      "Das gelingt nur, wenn der Blütenstand frontal und formatfüllend im Rahmen steht. Von schräg gesehen verzerren sich die Spiralen, und die Zählung stimmt nicht mehr. Findet die App nichts, zeichnet sie auch nichts — eine Linie ohne Befund wäre eine Behauptung.",
+      "Dafür muss sie die Blütenmitte auf etwa einen Bildpunkt genau kennen. Schon wenige Punkte daneben verrutschen die Spiralen beim Abrollen so weit, dass nichts mehr zu zählen ist — so genau zielt keine Hand. Die App sucht die Mitte deshalb selbst: Sie probiert Punkte in der Umgebung aus und geht dorthin, wo die Spiralen am deutlichsten werden. Das dauert ein bis zwei Sekunden und geschieht darum erst, wenn man die Messung festhält.",
+      "Der Ring mit dem Kreuz über dem Kamerabild zeigt, wo gemessen wird. Die Blütenmitte gehört ungefähr ins Kreuz, der Blütenstand soll den Ring füllen. Ungefähr genügt — den Rest findet die Suche.",
+      "Findet die App zwei Familien, legt sie sie als Linien ins Bild, um die gefundene Mitte, dorthin, wo sie gemessen wurden. Die Linien laufen zwischen den Reihen der Blütchen entlang, in den Gassen. Folgen sie den Reihen, stimmt die Zählung; kreuzen sie sie, stimmt sie nicht. Das kann jeder mit eigenen Augen prüfen. Sind die beiden Zahlen in der Fibonacci-Folge benachbart, färben sie sich ockergolden.",
+      "Das gelingt nur, wenn der Blütenstand frontal im Rahmen steht. Von schräg gesehen wird der Kreis zur Ellipse, und die Zählung stimmt nicht mehr. Findet die App nichts, zeichnet sie auch nichts — eine Linie ohne Befund wäre eine Behauptung.",
     ],
 
     run(frame: Frame): Result {
@@ -300,8 +430,11 @@ export function createParastichenMetric(
       const schwaechere = Math.min(r.detail['schaerfeLinks'] ?? 0, r.detail['schaerfeRechts'] ?? 0);
       const streuung = r.detail['streuung'] ?? 0;
       // Zwei Tore, und beide müssen offen sein.
+      // Nach einer Suche gilt die strengere Untergrenze -- sonst wird der beste
+      // von achtzig Zufallstreffern als Befund verkauft.
+      const mindest = (r.detail['gesucht'] ?? 0) === 1 ? GIPFEL_MINDEST_GESUCHT : GIPFEL_MINDEST;
       return clamp01(
-        ramp(STRUKTUR_MINDEST, STRUKTUR_VOLL, streuung) * ramp(GIPFEL_MINDEST, GIPFEL_VOLL, schwaechere),
+        ramp(STRUKTUR_MINDEST, STRUKTUR_VOLL, streuung) * ramp(mindest, GIPFEL_VOLL, schwaechere),
       );
     },
 

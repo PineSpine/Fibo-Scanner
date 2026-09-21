@@ -5,8 +5,8 @@ import { createWachhalter } from './camera/wakeLock.ts';
 import { createPipeline, type Pipeline } from './gpu/pipeline.ts';
 import { GpuError } from './gpu/context.ts';
 import { createBoxCountingMetric } from './metrics/boxCounting.ts';
-import { createParastichenMetric, parastichen, parastichenErgebnis } from './metrics/parastichen.ts';
-import type { Metric, Result } from './metrics/types.ts';
+import { createParastichenMetric, parastichenErgebnis, sucheMitte } from './metrics/parastichen.ts';
+import type { Frame, Metric, Result } from './metrics/types.ts';
 import {
   createSmoother,
   createStabilityTracker,
@@ -41,6 +41,7 @@ const video = frag<HTMLVideoElement>('#video');
 const kanten = frag<HTMLCanvasElement>('#kanten');
 const standbild = frag<HTMLCanvasElement>('#standbild');
 const messTitel = frag<HTMLElement>('.mess-titel');
+const platte = frag<HTMLElement>('.platte');
 
 /**
  * Alle Verfahren laufen nebeneinander. Nichts wird umgeschaltet -- die App
@@ -68,6 +69,16 @@ interface Verfahren {
    * ein Prozent sicherer ist. Sonst verdeckt das Häufige das Seltene.
    */
   spezifisch: boolean;
+  /**
+   * Ob das Verfahren nur an einer festgehaltenen Messung rechnet.
+   *
+   * Die Spiralenzählung braucht die Blütenmitte auf etwa einen Pixel genau --
+   * vier Pixel daneben, und ein perfekter Blütenstand misst null. Die Mitte
+   * muss deshalb gesucht werden, und die Suche kostet eine halbe Sekunde je
+   * Bild. Live ginge das nicht; und eine Zahl, die bei zwei Pixeln Versatz
+   * kippt, gehört ohnehin nicht in eine laufende Anzeige.
+   */
+  nurFestgehalten: boolean;
   jedesNte: number;
   glaetter: Smoother;
   ergebnis: Result | null;
@@ -109,6 +120,7 @@ const verfahren: Verfahren[] = [
     metrik: createBoxCountingMetric(),
     stetig: true,
     spezifisch: false,
+    nurFestgehalten: false,
     jedesNte: 1,
     glaetter: createSmoother(),
     ergebnis: null,
@@ -122,7 +134,8 @@ const verfahren: Verfahren[] = [
     metrik: createParastichenMetric(),
     stetig: false,
     spezifisch: true,
-    jedesNte: 3,
+    nurFestgehalten: true,
+    jedesNte: 1,
     glaetter: createSmoother(),
     ergebnis: null,
     konfidenz: 0,
@@ -157,6 +170,7 @@ let bildzaehler = 0;
  *
  *   live   → es wird fortlaufend gemessen und angezeigt
  *   reihe  → eine Messreihe läuft, es wird gesammelt
+ *   auswertung → Standbild steht, die Spiralen werden noch gezählt
  *   fest   → Standbild, der Befund der Reihe steht
  *
  * Der Grund für die Reihe: Eine Einzelmessung aus der Hand ist eine
@@ -165,8 +179,35 @@ let bildzaehler = 0;
  * bisher immer das jüngste Bild, also der Zufall selbst. Eine Reihe misst
  * stattdessen viele Bilder und hält fest, worauf sie sich geeinigt haben.
  */
-type Messzustand = 'live' | 'reihe' | 'fest';
+type Messzustand = 'live' | 'reihe' | 'auswertung' | 'fest';
 let messzustand: Messzustand = 'live';
+
+/** Kantenlänge des Messbilds. Die Nachzeichnung rechnet darin um. */
+const MESSKANTE = 512;
+
+/**
+ * Wie viele Bilder einer Reihe die Spiralenzählung auswertet, und in welchem
+ * Abstand sie aufgenommen werden.
+ *
+ * Nicht jedes Bild: Das erste kostet eine volle Mittelsuche (60 bis 90
+ * Messungen), jedes weitere einen kurzen Aufstieg von der Mitte des vorigen
+ * aus (etwa 25). Sechs Bilder sind am Entwicklungsrechner gut eine Sekunde,
+ * am Telefon geschätzt drei -- länger wartet niemand gern. Der Abstand von
+ * 350 ms verteilt sie über die ganze Reihe, damit sie nicht alle dasselbe
+ * Zittern einfangen.
+ */
+const SPIRALBILDER = 6;
+const SPIRALBILD_ABSTAND = 350;
+
+let spiralbilder: Frame[] = [];
+let letzteSpiralaufnahme = 0;
+/**
+ * Zählt Auswertungen hoch. Eine Auswertung läuft in Häppchen über mehrere
+ * Takte; drückt jemand zwischendurch "Beenden" oder startet neu, erkennt sie
+ * an der geänderten Nummer, dass ihr Ergebnis niemanden mehr interessiert.
+ */
+let auswertungsNummer = 0;
+let auswertungsStand = '';
 
 /**
  * Wie lange eine Messreihe sammelt.
@@ -193,6 +234,12 @@ const anzeige = createAnzeige();
 const wachhalter = createWachhalter();
 const belichtung = createBelichtungswaechter();
 const nachzeichner = createNachzeichner(frag<SVGSVGElement>('#nachzeichnung'));
+
+// Der Zielring zeigt den Messring der Spiralenzählung. Seine Radien kommen aus
+// denselben Einstellungen wie die Rechnung -- ein Ring, der woanders liegt als
+// die Messung, wäre schlimmer als keiner.
+frag<SVGCircleElement>('#zielring-innen').setAttribute('r', String(LOGPOLAR_STANDARD.innen * 50));
+frag<SVGCircleElement>('#zielring-aussen').setAttribute('r', String(LOGPOLAR_STANDARD.aussen * 50));
 
 // Die Erklaerungen stehen in den Verfahren selbst; die Anzeige kennt keines.
 erklaerungenAufbauen(
@@ -269,7 +316,7 @@ async function starteWirklich(): Promise<void> {
   }
 
   try {
-    pipeline = createPipeline(kanten, 512);
+    pipeline = createPipeline(kanten, MESSKANTE);
   } catch (error) {
     kamera.stop();
     kamera = null;
@@ -323,6 +370,8 @@ async function starteWirklich(): Promise<void> {
 
 function messungBeenden(): void {
   laeuft = false;
+  // Eine Auswertung, die noch läuft, soll ihr Ergebnis nicht mehr abliefern.
+  auswertungsNummer++;
   wachhalter.freigeben();
   pipeline?.dispose();
   pipeline = null;
@@ -336,7 +385,7 @@ function schleife(jetzt: number): void {
   if (!laeuft || !pipeline) return;
   requestAnimationFrame(schleife);
 
-  if (messzustand === 'fest') {
+  if (messzustand === 'fest' || messzustand === 'auswertung') {
     // Am Standbild wird nicht gemessen. Die Kette wird trotzdem leergeräumt,
     // damit beim Weitermessen kein Bild von vorhin als neuestes durchgeht.
     while (pipeline.poll() !== null) {
@@ -381,22 +430,34 @@ function schleife(jetzt: number): void {
     let bericht = stabilitaet.report;
 
     for (const v of verfahren) {
+      if (v.nurFestgehalten) {
+        // Kein Wert im laufenden Bild, sondern die Anleitung. Während einer
+        // Reihe werden nur Bilder beiseitegelegt; gezählt wird danach.
+        v.wert = null;
+        v.konfidenz = 0;
+        v.ergebnis = null;
+        v.roh = undefined;
+        v.hinweis = 'Blütenmitte ins Kreuz, dann festhalten';
+        if (
+          messzustand === 'reihe' &&
+          zaehlt &&
+          spiralbilder.length < SPIRALBILDER &&
+          neuestes.timestamp - letzteSpiralaufnahme >= SPIRALBILD_ABSTAND
+        ) {
+          // Die Pipeline legt je Bild neue Puffer an; aufheben ist sicher.
+          spiralbilder.push(neuestes);
+          letzteSpiralaufnahme = neuestes.timestamp;
+        }
+        continue;
+      }
+
       // Während einer Reihe rechnet jedes Verfahren bei jedem Bild. Die
       // Staffelung spart Rechenzeit im Dauerbetrieb; in den zweieinhalb
       // Sekunden einer Reihe ist jede Einzelmessung eine Stimme, und auf die
       // kommt es hier an.
       if (messzustand !== 'reihe' && bildzaehler % v.jedesNte !== 0 && v.ergebnis !== null) continue;
 
-      // Die Rohmessung wird gebraucht, das Ergebnis auch -- aber beides aus
-      // einer Rechnung. Vorher lief die Fouriertransformation zweimal.
-      let ergebnis: Result;
-      if (v.spezifisch) {
-        const roh = parastichen(neuestes);
-        v.roh = roh;
-        ergebnis = parastichenErgebnis(roh);
-      } else {
-        ergebnis = v.metrik.run(neuestes);
-      }
+      const ergebnis = v.metrik.run(neuestes);
       const konfidenz = v.metrik.confidence(ergebnis);
       v.ergebnis = ergebnis;
       v.konfidenz = zaehlt ? konfidenz : 0;
@@ -454,6 +515,7 @@ function nachzeichnungPflegen(): void {
       spirale.roh.familien,
       (spirale.ergebnis?.detail['treffer'] ?? 0) === 1,
       LOGPOLAR_STANDARD,
+      { x: spirale.roh.mitte.x / MESSKANTE, y: spirale.roh.mitte.y / MESSKANTE },
     );
   } else {
     nachzeichner.loeschen();
@@ -504,55 +566,139 @@ function reiheStarten(jetzt: number): void {
     v.fest = null;
   }
   unruhe.gipfelZuruecksetzen();
+  spiralbilder = [];
+  letzteSpiralaufnahme = 0;
   reiheSeit = jetzt;
   reiheDauer = 0;
-  messzustand = 'reihe';
-  knopfBeschriften();
+  zustandSetzen('reihe');
 }
 
 /**
  * Schließt die Reihe ab: Aus vielen Einzelmessungen wird ein Befund, und aus
  * dem laufenden Bild ein Standbild.
+ *
+ * Zweistufig. Die fraktale Dimension steht sofort fest -- ihre Einzelmessungen
+ * sind schon gerechnet. Die Spiralen werden erst jetzt gezählt, an den
+ * beiseitegelegten Bildern, mit Mittelsuche; das dauert ein bis drei Sekunden.
+ * Das Standbild steht in dieser Zeit schon, damit man sieht, dass es weitergeht.
  */
 function reiheAbschliessen(dauer: number): void {
   reiheDauer = dauer / 1000;
 
-  for (const v of verfahren) {
-    const proben = v.proben.map((p) => p.probe);
-    // Stetig oder ganzzahlig -- dieselbe Unterscheidung wie bei der Glättung,
-    // und aus demselben Grund: Ein Mittel aus 34 und 55 wäre 44,5.
-    const befund: Reihenbefund = v.stetig ? fasseStetig(proben) : fasseDiskret(proben);
-    const vertreter = befund.vertreter >= 0 ? v.proben[befund.vertreter] : undefined;
-
-    if (vertreter) {
-      v.ergebnis = vertreter.ergebnis;
-      v.roh = vertreter.roh;
-    }
-
-    v.fest = festbefundBauen(v, befund, vertreter?.ergebnis);
-    v.konfidenz = v.fest.wert === null ? 0 : befund.konfidenz;
-    v.wert = v.fest.wert;
-    // Hat kein Bild getragen, gibt es keinen Vertreter -- den Grund liefert
-    // dann das letzte Bild der Reihe. "Nichts gefunden" allein sagt nicht,
-    // was man anders machen soll.
-    v.hinweis = festhinweis(befund, vertreter?.ergebnis ?? v.proben.at(-1)?.ergebnis);
-    // Die Einzelmessungen haben ihren Dienst getan; der Befund steht.
-    v.proben.length = 0;
-  }
+  for (const v of verfahren) if (!v.nurFestgehalten) festhalten(v);
 
   standbildZeichnen();
   // Das Kantenbild einmal einfrieren, mit der Schwelle des vertretenden
   // Bildes. Danach wird nicht mehr gezeichnet, und der Knopf "Kanten zeigen"
   // blendet das stehende Bild nur noch ein und aus.
   if (pipeline) {
-    const kante = Math.min(kanten.clientWidth, kanten.clientHeight) || 512;
+    const kante = Math.min(kanten.clientWidth, kanten.clientHeight) || MESSKANTE;
     pipeline.present(kante, kante, (verfahren[0]?.ergebnis?.detail['threshold'] ?? 20) / 255);
   }
 
-  messzustand = 'fest';
-  knopfBeschriften();
-  nachzeichnungPflegen();
+  for (const v of verfahren) {
+    if (!v.nurFestgehalten) continue;
+    v.wert = null;
+    v.konfidenz = 0;
+    v.hinweis = 'Spiralen werden gezählt …';
+  }
+
+  const nummer = ++auswertungsNummer;
+  const bilder = spiralbilder;
+  spiralbilder = [];
+  auswertungsStand = '';
+  zustandSetzen('auswertung');
   befundeZeigen(zustandText(true, 0), letzteHelligkeit, stabilitaet.report);
+
+  void spiralenZaehlen(bilder, nummer).then((fertig) => {
+    if (!fertig || nummer !== auswertungsNummer) return;
+    for (const v of verfahren) if (v.nurFestgehalten) festhalten(v);
+    zustandSetzen('fest');
+    nachzeichnungPflegen();
+    befundeZeigen(zustandText(true, 0), letzteHelligkeit, stabilitaet.report);
+  });
+}
+
+/** Gibt dem Browser einen Takt, damit er zeichnen kann, was bisher feststeht. */
+function atemzug(): Promise<void> {
+  return new Promise((weiter) => setTimeout(weiter, 0));
+}
+
+/**
+ * Zählt die Spiralen an den beiseitegelegten Bildern einer Reihe.
+ *
+ * Das erste Bild bekommt die volle Mittelsuche. Jedes weitere beginnt dort,
+ * wo das vorige die Mitte gefunden hat -- die Hand hat sich in 350 ms nur um
+ * wenige Pixel bewegt, und ein kurzer Aufstieg genügt. Zwischen zwei Bildern
+ * gibt die Schleife den Takt ab, sonst stünde die Anzeige still, bis alles
+ * fertig ist.
+ *
+ * Gibt `false` zurück, wenn die Auswertung überholt wurde.
+ */
+async function spiralenZaehlen(bilder: readonly Frame[], nummer: number): Promise<boolean> {
+  const v = verfahren.find((w) => w.nurFestgehalten);
+  if (!v) return true;
+  v.proben.length = 0;
+
+  let start: { x: number; y: number } | undefined;
+  for (const [i, bild] of bilder.entries()) {
+    auswertungsStand = `Bild ${i + 1} von ${bilder.length}`;
+    befundeZeigen(zustandText(true, 0), letzteHelligkeit, stabilitaet.report);
+    await atemzug();
+    if (nummer !== auswertungsNummer) return false;
+
+    const roh = sucheMitte(bild, undefined, start);
+    start = roh.mitte;
+    const ergebnis = parastichenErgebnis(roh);
+    const konfidenz = v.metrik.confidence(ergebnis);
+    v.proben.push({
+      probe: {
+        wert: ergebnis.value,
+        marke: konfidenz >= VERTRAUEN_GERING ? wertText(ergebnis) : null,
+        konfidenz,
+      },
+      ergebnis,
+      roh,
+    });
+  }
+  return true;
+}
+
+/**
+ * Fasst die Einzelmessungen eines Verfahrens zusammen und stellt den Befund
+ * still.
+ */
+function festhalten(v: Verfahren): void {
+  const proben = v.proben.map((p) => p.probe);
+  // Stetig oder ganzzahlig -- dieselbe Unterscheidung wie bei der Glättung,
+  // und aus demselben Grund: Ein Mittel aus 34 und 55 wäre 44,5.
+  const befund: Reihenbefund = v.stetig ? fasseStetig(proben) : fasseDiskret(proben);
+  const vertreter = befund.vertreter >= 0 ? v.proben[befund.vertreter] : undefined;
+
+  if (vertreter) {
+    v.ergebnis = vertreter.ergebnis;
+    v.roh = vertreter.roh;
+  }
+
+  v.fest = festbefundBauen(v, befund, vertreter?.ergebnis);
+  v.konfidenz = v.fest.wert === null ? 0 : befund.konfidenz;
+  v.wert = v.fest.wert;
+  // Hat kein Bild getragen, gibt es keinen Vertreter -- den Grund liefert
+  // dann das letzte Bild der Reihe. "Nichts gefunden" allein sagt nicht,
+  // was man anders machen soll.
+  v.hinweis = festhinweis(befund, vertreter?.ergebnis ?? v.proben.at(-1)?.ergebnis);
+  // Die Einzelmessungen haben ihren Dienst getan; der Befund steht.
+  v.proben.length = 0;
+}
+
+/**
+ * Setzt den Messzustand und alles, was an ihm hängt: Knopf, Überschrift, und
+ * ob der Zielring zu sehen ist.
+ */
+function zustandSetzen(neu: Messzustand): void {
+  messzustand = neu;
+  platte.dataset['modus'] = neu;
+  knopfBeschriften();
 }
 
 /**
@@ -601,17 +747,21 @@ function festhinweis(befund: Reihenbefund, ergebnis: Result | undefined): string
 
 /** Zurück in den laufenden Betrieb. */
 function weitermessen(): void {
-  messzustand = 'live';
+  // Eine noch laufende Auswertung ist damit überholt.
+  auswertungsNummer++;
+  spiralbilder = [];
   reiheDauer = 0;
   standbild.hidden = true;
   for (const v of verfahren) {
     v.fest = null;
     v.proben.length = 0;
+    v.roh = undefined;
   }
+  nachzeichner.loeschen();
   // Das Zehn-Sekunden-Fenster hat ein Loch, solange das Standbild stand.
   // Ein Fenster mit Loch misst nicht mehr, was es zu messen vorgibt.
   stabilitaet.reset();
-  knopfBeschriften();
+  zustandSetzen('live');
 }
 
 /**
@@ -638,14 +788,17 @@ function standbildZeichnen(): void {
 }
 
 function knopfBeschriften(): void {
-  messTitel.textContent = messzustand === 'fest' ? 'Festgehalten' : 'Befund';
-  festhaltenKnopf.disabled = messzustand === 'reihe';
+  const steht = messzustand === 'fest' || messzustand === 'auswertung';
+  messTitel.textContent = steht ? 'Festgehalten' : 'Befund';
+  festhaltenKnopf.disabled = messzustand === 'reihe' || messzustand === 'auswertung';
   festhaltenKnopf.textContent =
     messzustand === 'fest'
       ? 'Weiter messen'
       : messzustand === 'reihe'
         ? 'Messreihe läuft …'
-        : 'Messung festhalten';
+        : messzustand === 'auswertung'
+          ? 'Spiralen werden gezählt …'
+          : 'Messung festhalten';
 }
 
 /**
@@ -716,6 +869,9 @@ function zustandText(eingependelt: boolean, jetzt: number): string {
       minimumFractionDigits: 1,
       maximumFractionDigits: 1,
     })} s`;
+  }
+  if (messzustand === 'auswertung') {
+    return `Spiralen werden gezählt${auswertungsStand ? ` – ${auswertungsStand}` : ' …'}`;
   }
   if (messzustand === 'reihe') {
     const verstrichen = Math.max(0, (jetzt - reiheSeit) / 1000);

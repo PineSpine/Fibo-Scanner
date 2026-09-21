@@ -110,6 +110,34 @@ async function pruefen(): Promise<void> {
     );
     koerper.append(zeile);
   }
+
+  // Ausrichtung. Der Vergleich oben sieht sie nicht -- er prueft das
+  // zurueckgegebene Bild gegen sich selbst. Lange stand das Messbild deshalb
+  // unbemerkt auf dem Kopf: Die Zaehlungen haengen nicht davon ab, die
+  // Nachzeichnung und die Mittelsuche der Spiralen sehr wohl.
+  const band = new Uint8Array(512 * 512);
+  band.fill(255, 0, 128 * 512);
+  zeichne({ data: band, width: 512, height: 512 });
+  pipeline.submit(quelle, performance.now());
+  const frame = await warteAufFrame();
+  const mittel = (von: number, bis: number): number => {
+    let s = 0;
+    for (let i = von * 512; i < bis * 512; i++) s += frame.gray[i]!;
+    return s / ((bis - von) * 512);
+  };
+  const oben = mittel(0, 64);
+  const unten = mittel(448, 512);
+  const zeile = document.createElement('tr');
+  const kopf = document.createElement('th');
+  kopf.scope = 'row';
+  kopf.textContent = 'Ausrichtung';
+  const befund = zelle(
+    `helles Band oben: Zeile 0–63 ${zahl(oben, 0)}, Zeile 448–511 ${zahl(unten, 0)}`,
+    oben > 200 && unten < 50 ? 'ja' : 'nein',
+  );
+  befund.colSpan = 6;
+  zeile.append(kopf, befund);
+  koerper.append(zeile);
 }
 
 void pruefen().catch((error: unknown) => {

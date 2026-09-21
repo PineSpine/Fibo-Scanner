@@ -167,12 +167,21 @@ export function createPipeline(canvas: HTMLCanvasElement, size = 512): Pipeline 
     readIndex = (readIndex + 1) % SLOTS;
     inFlight--;
 
+    // readPixels liefert die unterste Zeile zuerst -- so zaehlt OpenGL. Ein
+    // Frame zaehlt dagegen von oben, wie das Bild auf dem Schirm steht. Ohne
+    // diese Umkehr stand das Messbild auf dem Kopf; gemerkt hat es lange
+    // niemand, weil die Zaehlungen davon nicht abhaengen. Die Nachzeichnung und
+    // die Mittelsuche schon: Sie muessen wissen, wo im Bild etwas liegt.
     const count = size * size;
     const grayOut = new Uint8Array(count);
     const edgeOut = new Uint8Array(count);
-    for (let i = 0, j = 0; i < count; i++, j += 4) {
-      grayOut[i] = interleaved[j]!;
-      edgeOut[i] = interleaved[j + 1]!;
+    for (let y = 0; y < size; y++) {
+      const quelle = (size - 1 - y) * size * 4;
+      const ziel = y * size;
+      for (let x = 0, j = quelle; x < size; x++, j += 4) {
+        grayOut[ziel + x] = interleaved[j]!;
+        edgeOut[ziel + x] = interleaved[j + 1]!;
+      }
     }
 
     return { gray: grayOut, edges: edgeOut, width: size, height: size, timestamp: slot.timestamp };
