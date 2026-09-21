@@ -15,6 +15,8 @@ import {
 } from './calibration/stability.ts';
 import {
   EINIGKEIT_MINDEST,
+  VERTRAUEN_GERING,
+  VERTRAUEN_GUT,
   fasseDiskret,
   fasseStetig,
   type Probe,
@@ -146,7 +148,7 @@ const WECHSELVORSPRUNG = 0.15;
  * wenn ein Dauerverfahren höher steht. Nicht tiefer ansetzen -- sonst drängt
  * sich eine Vermutung vor eine Messung.
  */
-const SONDERBEFUND_AB = 0.6;
+const SONDERBEFUND_AB = VERTRAUEN_GUT;
 
 let bildzaehler = 0;
 
@@ -411,7 +413,7 @@ function schleife(jetzt: number): void {
       } else {
         // Ohne Vertrauen keine Zahl. Ein Verfahren, das nichts gefunden hat,
         // soll das sagen und nicht raten.
-        v.wert = zaehlt && konfidenz > 0 ? wertText(ergebnis) : null;
+        v.wert = zaehlt && konfidenz >= VERTRAUEN_GERING ? wertText(ergebnis) : null;
       }
 
       // Eine Stimme für die laufende Reihe. Bilder aus der Einpendelphase
@@ -420,7 +422,7 @@ function schleife(jetzt: number): void {
         v.proben.push({
           probe: {
             wert: ergebnis.value,
-            marke: konfidenz > 0 ? wertText(ergebnis) : null,
+            marke: konfidenz >= VERTRAUEN_GERING ? wertText(ergebnis) : null,
             konfidenz,
           },
           ergebnis,
@@ -447,7 +449,7 @@ function schleife(jetzt: number): void {
 /** Nachgezeichnet wird nur, was auch gefunden wurde. */
 function nachzeichnungPflegen(): void {
   const spirale = verfahren.find((v) => !v.stetig);
-  if (spirale && spirale.konfidenz >= 0.6 && spirale.roh) {
+  if (spirale && spirale.konfidenz >= VERTRAUEN_GUT && spirale.roh) {
     nachzeichner.spiralen(
       spirale.roh.familien,
       (spirale.ergebnis?.detail['treffer'] ?? 0) === 1,
@@ -530,7 +532,10 @@ function reiheAbschliessen(dauer: number): void {
     v.fest = festbefundBauen(v, befund, vertreter?.ergebnis);
     v.konfidenz = v.fest.wert === null ? 0 : befund.konfidenz;
     v.wert = v.fest.wert;
-    v.hinweis = festhinweis(befund, vertreter?.ergebnis);
+    // Hat kein Bild getragen, gibt es keinen Vertreter -- den Grund liefert
+    // dann das letzte Bild der Reihe. "Nichts gefunden" allein sagt nicht,
+    // was man anders machen soll.
+    v.hinweis = festhinweis(befund, vertreter?.ergebnis ?? v.proben.at(-1)?.ergebnis);
     // Die Einzelmessungen haben ihren Dienst getan; der Befund steht.
     v.proben.length = 0;
   }
@@ -679,7 +684,13 @@ function alsBefund(v: Verfahren): Befund {
     name: v.metrik.label,
     wert: v.wert,
     konfidenz: v.konfidenz,
-    treffer: v.wert !== null && (fest ? fest.treffer : (v.ergebnis?.detail['treffer'] ?? 0) === 1),
+    // Gold nur für ein Paar, das auch gefunden wurde. Ein Fibonacci-Paar bei
+    // einem Prozent Vertrauen ist ein Zufall aus der Nachbarschaft von 5 und 8,
+    // keine Entdeckung -- und genau das stand draußen golden da.
+    treffer:
+      v.wert !== null &&
+      v.konfidenz >= VERTRAUEN_GUT &&
+      (fest ? fest.treffer : (v.ergebnis?.detail['treffer'] ?? 0) === 1),
     hinweis: v.hinweis,
     deutung: fest ? fest.deutung : (v.ergebnis?.deutung ?? ''),
     reihe: fest && fest.wert !== null ? fest.reihe : undefined,

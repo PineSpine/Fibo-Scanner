@@ -68,6 +68,26 @@ export interface Reihenbefund {
  */
 export const EINIGKEIT_MINDEST = 0.25;
 
+/**
+ * Unterhalb dieser Grenze steht keine Zahl da, sondern ein Strich und der
+ * Grund.
+ *
+ * Draußen stand hier „5/8" in Gold, mit einem Prozent Vertrauen. Das Verfahren
+ * hatte selbst gesagt, dass es nichts gefunden hat -- die Anzeige hat es
+ * trotzdem ausgesprochen, und zwar in der Farbe für Treffer. Genau das ist die
+ * Zahlenmystik, die die App nie betreiben soll. Deshalb gilt die Grenze an
+ * einer Stelle und für alle: für die laufende Anzeige, für die Stimmen einer
+ * Messreihe und für das, was am Ende festgehalten wird.
+ */
+export const VERTRAUEN_GERING = 0.15;
+
+/**
+ * Ab hier gilt ein Befund als gefunden: Die Nachzeichnung erscheint, ein
+ * spezifisches Verfahren bekommt den Hauptplatz, und ein Fibonacci-Paar darf
+ * golden werden. Darunter ist ein Paar ein Zufall, keine Entdeckung.
+ */
+export const VERTRAUEN_GUT = 0.6;
+
 const LEER: Reihenbefund = {
   marke: null,
   wert: 0,

@@ -76,6 +76,19 @@ const STRUKTUR_MINDEST = 10;
 const GIPFEL_MINDEST = 30;
 
 /**
+ * Ab hier sind beide Tore voll offen. Dazwischen steigt das Vertrauen weich an.
+ *
+ * Was dazwischen liegt, ist nicht "ein bisschen Blütenstand", sondern meistens
+ * etwas anderes. Die ersten echten Fotos -- Dahlie und Zinnie, jeweils die
+ * ganze Blüte im Bild -- lagen bei Gipfelhöhe 33 bis 51, also genau in dem
+ * Bereich, in dem auch Baum und fraktale Fläche liegen. Gezählt wurden dort
+ * die Blütenblätter, nicht die Blütchen: 12 bis 14 bei der Dahlie. Ein
+ * gerechneter Blütenstand erreicht 90 bis 277.
+ */
+const GIPFEL_VOLL = 90;
+const STRUKTUR_VOLL = 22;
+
+/**
  * Eine gefundene Spiralfamilie, so vollständig, dass sie sich nachzeichnen
  * lässt.
  *
@@ -213,6 +226,12 @@ export function parastichenErgebnis(roh: ParastichenRoh): Result {
   if (roh.streuung < STRUKTUR_MINDEST) caveats.push('zu wenig Struktur – kein Blütenstand im Bild');
   else if (schwaechere < GIPFEL_MINDEST) caveats.push('keine deutlichen Spiralen – frontal und formatfüllend halten');
   else if (roh.links === roh.rechts) caveats.push('nur eine Spiralfamilie erkennbar');
+  // Die Tore sind offen, aber nicht weit: Das Vertrauen bleibt gering, und
+  // ohne diesen Satz stünde in der Anzeige kein Grund dafür. Der Rat ist
+  // konkret, weil der häufigste Fehler konkret ist -- die ganze Blüte im Bild
+  // statt ihrer Mitte.
+  else if (schwaechere < GIPFEL_VOLL || roh.streuung < STRUKTUR_VOLL)
+    caveats.push('Spiralen nur angedeutet – Blütenmitte formatfüllend halten');
   else if (!roh.treffer) caveats.push('Spiralen gezählt, aber kein Fibonacci-Paar');
 
   return {
@@ -281,7 +300,9 @@ export function createParastichenMetric(
       const schwaechere = Math.min(r.detail['schaerfeLinks'] ?? 0, r.detail['schaerfeRechts'] ?? 0);
       const streuung = r.detail['streuung'] ?? 0;
       // Zwei Tore, und beide müssen offen sein.
-      return clamp01(ramp(10, 22, streuung) * ramp(GIPFEL_MINDEST, 90, schwaechere));
+      return clamp01(
+        ramp(STRUKTUR_MINDEST, STRUKTUR_VOLL, streuung) * ramp(GIPFEL_MINDEST, GIPFEL_VOLL, schwaechere),
+      );
     },
 
     explain(r: Result): string {

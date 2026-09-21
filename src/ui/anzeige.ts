@@ -1,3 +1,5 @@
+import { VERTRAUEN_GERING, VERTRAUEN_GUT } from '../calibration/messreihe.ts';
+
 export interface Befund {
   id: string;
   /** Name des Verfahrens, wie er dasteht. */
@@ -97,8 +99,8 @@ function detailWert(schluessel: string, wert: number): string {
  * verschwinden -- wer misst, soll sehen, was das Gerät sieht.
  */
 function vertrauensstufe(konfidenz: number): 'gut' | 'gering' | 'keins' {
-  if (konfidenz >= 0.6) return 'gut';
-  if (konfidenz >= 0.15) return 'gering';
+  if (konfidenz >= VERTRAUEN_GUT) return 'gut';
+  if (konfidenz >= VERTRAUEN_GERING) return 'gering';
   return 'keins';
 }
 

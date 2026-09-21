@@ -26,7 +26,7 @@ Privatprojekt. Kein Produkt, kein Store, kein Nutzerkonto.
 | M3 — Rotationssymmetrie | offen (Log-Polar steht bereits in `metrics/logPolar.ts`) |
 | M5 — Packung / Voronoi | offen |
 
-81 Tests, 10 Dateien. `npm test` muss grün sein, bevor irgendetwas gepusht wird —
+84 Tests, 11 Dateien. `npm test` muss grün sein, bevor irgendetwas gepusht wird —
 der Workflow bricht sonst ab und veröffentlicht nicht.
 
 **Der Feldtest hat den entscheidenden Mangel gezeigt:** Beide Verfahren werten
@@ -186,6 +186,7 @@ src/
 test/fixtures/ images.ts        Sierpinski, Koch, Rauschen, leer
                scenes.ts        Wand, Backstein, fBm, Verzweigungsbaum, Weichzeichner
                phyllotaxis.ts   Blütenstände nach Vogel
+test/fotos/                     echte Fotos, eingecheckt (fixtures/*.png sind erzeugt und ignoriert)
 scripts/       png.ts           gemeinsamer PNG-Leser und -Schreiber
 ```
 
@@ -274,6 +275,30 @@ Unter einem Viertel Einigkeit (`EINIGKEIT_MINDEST`) zeigt die App **keinen
 Wert**, sondern den Grund: „die Messungen widersprechen einander — 6 von 58".
 Das ist dieselbe Regel wie überall sonst: Der gefährlichere Fehler ist nie,
 etwas zu übersehen, sondern etwas zu behaupten.
+
+### Erster Feldtest der Messreihe (21.09.2026)
+
+| Motiv | fraktale Dimension | Spiralen |
+|---|---|---|
+| Dahlie, ganze Blüte | 1,24 · einig in 90 von 91 · Spanne 0,044 | „12/13", Vertrauen 3 %, 26 von 91 |
+| Zinnie, ganze Blüte | 1,39 · einig in 88 von 97 · Spanne 0,057 | **„5/8" in Gold**, Vertrauen 1 %, 86 von 97 |
+
+**M1 ist mit der Reihe reproduzierbar**, die Spanne innerhalb einer Reihe liegt
+um die Abnahmegrenze von 0,05.
+
+**M4 hat nichts gefunden — und das war richtig.** Nachgerechnet am Standbild:
+Gipfelhöhe 33 bis 51, also der Bereich von Baum und fraktaler Fläche, nicht der
+eines Blütenstands (90 bis 277). Gezählt wurden die Blütenblätter (Dahlie 12 bis
+14), nicht die Blütchen. Eine Verschiebung um vier Pixel kippt 13/14 auf 13/13
+und 5/8 auf 7/8 — so sieht das Zappeln aus, wenn es keinen echten Gipfel gibt.
+
+**Der Fehler lag in der Anzeige.** Sie zeigte jede Zahl mit Vertrauen über null
+und machte ein Fibonacci-Paar golden, egal wie sicher. Seitdem gelten zwei
+Grenzen an einer Stelle (`messreihe.ts`): Unter `VERTRAUEN_GERING` (0,15) keine
+Zahl, sondern Strich und Grund — live, als Stimme in der Reihe und im
+festgehaltenen Befund. Gold, Nachzeichnung und Hauptplatz erst ab
+`VERTRAUEN_GUT` (0,6). Die beiden Fotos liegen als `test/fotos/`
+bei und müssen unter der Anzeigegrenze bleiben.
 
 ### Bildunruhe
 
@@ -545,6 +570,17 @@ die UI geht: gegen alle Fremdmotive prüfen, nicht nur gegen die eigenen
 Referenzbilder.** Der gefährlichere Fehler ist nie, etwas zu übersehen, sondern
 etwas zu behaupten.
 
+**Ein Verfahren, das nichts findet, und eine Anzeige, die es trotzdem sagt.**
+Die Spiralenzählung meldete auf einer Zinnie selbst 1 % Vertrauen — die Anzeige
+schrieb „5/8" in Gold daneben. Die Regel „ohne Vertrauen keine Zahl" stand im
+Styleguide, aber im Code stand `konfidenz > 0`. **Jede Schwelle, die über
+Anzeigen entscheidet, gehört als benannte Konstante an eine Stelle.**
+
+**Der Fototest liegt unter der anderen tsconfig.** `test/fotos.test.ts` liest
+PNG-Dateien und braucht Node-Typen; die Browser-tsconfig schließt ihn aus, die
+Skript-tsconfig schließt ihn ein. Wer weitere Tests mit Dateizugriff anlegt,
+trägt sie dort genauso ein.
+
 **Der Browser-Pane der Entwicklungsumgebung drosselt `requestAnimationFrame`** auf
 wenige Bilder je Sekunde und schaltet die Messung über `visibilitychange` ab.
 Live-Verhalten lässt sich dort nicht beurteilen — Messverfahren über Tests
@@ -563,11 +599,15 @@ Skript in den Scratchpad schreiben und von dort ausführen.
 erbt, macht die App nicht besser. Die Reihenfolge steht so, weil jeder Schritt
 den nächsten beurteilbar macht:
 
-1. **Messreihe am Gerät prüfen.** Blüte, Knopf drücken, ruhig halten. Abzulesen:
-   Wie viele von wie vielen? Bleibt derselbe Befund über mehrere Reihen stehen?
-   Und die Zeile „Bildunruhe" im Messprotokoll — bei ruhiger Hand und bei einem
-   absichtlichen Schwenk. Erst mit diesen zwei Zahlen lässt sich entscheiden, ob
-   die Schwelle für ein Bewegungstor gebraucht wird und wo sie liegt.
+1. **M4 an einem echten Blütenstand prüfen — mit formatfüllender Mitte.** Für
+   M1 ist die Messreihe am Gerät bestätigt (siehe Feldtest). Für M4 steht der
+   Beweis aus, dass das Verfahren an einem Foto überhaupt etwas findet: Dahlie
+   und Zinnie zeigten Blütenblätter, keine Blütchen. Motive, bei denen die
+   Spiralen die Fläche füllen: Sonnenblumenmitte, Kiefernzapfen von unten,
+   Kamille- oder Sonnenhutmitte, Romanesco, Hauswurz- und Echeverienrosetten.
+   Erreicht auch dort nichts Gipfelhöhe 90, liegt der Mangel im Verfahren
+   (Mittelpunkt, Ringbreite, Auflösung) und nicht am Motiv. Dazu weiterhin die
+   Zeile „Bildunruhe" — ruhige Hand gegen absichtlichen Schwenk.
 2. **Peak mit Vorsprung (M4).** `parastichen()` nimmt den stärksten von 116
    Kandidaten, ohne zu verlangen, dass er den zweitstärksten schlägt. Genau da
    entsteht das Kippen zwischen 33, 34 und 55. Verlangt werden sollte ein

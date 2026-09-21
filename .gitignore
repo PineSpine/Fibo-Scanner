@@ -18,3 +18,10 @@ fibo-scanner-dist.zip
 #
 # Soll das Repository privat bleiben, genuegt es, diese Zeile zu loeschen.
 docs/moodboard/
+
+# Bildschirmfotos vom Feldtest.
+#
+# Darauf sind Statusleiste und Browser-Tabs des Telefons zu sehen -- das gehoert
+# nicht in ein oeffentliches Repository. Was davon fuer Tests gebraucht wird,
+# liegt ausgeschnitten und als Graustufen in test/fotos/.
+test/test_messungen/

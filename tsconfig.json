@@ -27,5 +27,8 @@
   "include": [
     "src",
     "test"
+  ],
+  "exclude": [
+    "test/fotos.test.ts"
   ]
 }
