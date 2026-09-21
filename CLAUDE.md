@@ -31,8 +31,9 @@ der Workflow bricht sonst ab und veröffentlicht nicht.
 
 ### Übergabe — wo wir stehen (21.09.2026)
 
-Live ist Commit `1ace76a`, Bauzeit **21.09.2026, 15:39** (UTC; Zeile „Stand"
-im Messprotokoll). Was seit dem ersten Feldtest geschah, in einem Absatz:
+Der Code-Stand ist Commit `1ace76a`; spätere Commits änderten nur diese Datei.
+Jeder Push baut neu — die Zeile „Stand" im Messprotokoll zeigt die Bauzeit des
+letzten Pushs in UTC, nicht die des Codes. Was seit dem ersten Feldtest geschah, in einem Absatz:
 Messreihe mit Standbild gebaut („Messung festhalten") → M1 damit
 reproduzierbar → M4 zappelte weiter → Diagnose: die Spiralenzählung per
 Fouriertransformation braucht die Blütenmitte pixelgenau (Mittelsuche gebaut)
