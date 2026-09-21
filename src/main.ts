@@ -5,7 +5,16 @@ import { createWachhalter } from './camera/wakeLock.ts';
 import { createPipeline, type Pipeline } from './gpu/pipeline.ts';
 import { GpuError } from './gpu/context.ts';
 import { createBoxCountingMetric } from './metrics/boxCounting.ts';
-import { createParastichenMetric, parastichenErgebnis, sucheMitte } from './metrics/parastichen.ts';
+import {
+  createKettenMetric,
+  entscheide,
+  KETTEN_RING,
+  kettenErgebnis,
+  kettenStimmen,
+  type KettenRoh,
+  type Stimmen,
+} from './metrics/ketten.ts';
+import { sucheMitte } from './metrics/parastichen.ts';
 import type { Frame, Metric, Result } from './metrics/types.ts';
 import {
   createSmoother,
@@ -25,8 +34,6 @@ import {
 import { createUnruhewaechter } from './calibration/bewegung.ts';
 import { createAnzeige, erklaerungenAufbauen, type Befund } from './ui/anzeige.ts';
 import { createNachzeichner } from './ui/nachzeichnung.ts';
-import { LOGPOLAR_STANDARD } from './metrics/logPolar.ts';
-import type { ParastichenRoh } from './metrics/parastichen.ts';
 
 function frag<T extends Element>(wahl: string): T {
   const element = document.querySelector<T>(wahl);
@@ -47,10 +54,9 @@ const platte = frag<HTMLElement>('.platte');
  * Alle Verfahren laufen nebeneinander. Nichts wird umgeschaltet -- die App
  * soll sagen, was im Bild steckt, nicht fragen, wonach man suchen will.
  *
- * `jedesNte` staffelt die teureren: Box-Counting kostet 4,4 ms, die
- * Spiralenzählung 5,3 ms auf dem Entwicklungsrechner. Beides bei jedem Bild
- * wäre auf einem Telefon zu viel; die Spiralen ändern sich ohnehin langsamer
- * als die Hand zittert.
+ * `jedesNte` staffelt die teureren. Box-Counting kostet 4,4 ms auf dem
+ * Entwicklungsrechner und läuft bei jedem Bild; die Spiralenzählung läuft
+ * gar nicht live (`nurFestgehalten`).
  *
  * `stetig` sagt, ob der Wert geglättet werden darf. Eine Spiralenzahl ist
  * ganzzahlig -- ein Mittel aus 34 und 55 wäre 44,5 und damit eine Zahl, die es
@@ -72,11 +78,10 @@ interface Verfahren {
   /**
    * Ob das Verfahren nur an einer festgehaltenen Messung rechnet.
    *
-   * Die Spiralenzählung braucht die Blütenmitte auf etwa einen Pixel genau --
-   * vier Pixel daneben, und ein perfekter Blütenstand misst null. Die Mitte
-   * muss deshalb gesucht werden, und die Suche kostet eine halbe Sekunde je
-   * Bild. Live ginge das nicht; und eine Zahl, die bei zwei Pixeln Versatz
-   * kippt, gehört ohnehin nicht in eine laufende Anzeige.
+   * Die Spiralenzählung sucht die Blütenmitte und baut dreißig Blütchengitter
+   * -- gut eine Sekunde je Bild. Live ginge das nicht; und eine Zählung, die
+   * nicht über mehrere Ringe und Bilder abgestimmt ist, gehört ohnehin nicht
+   * in eine laufende Anzeige.
    */
   nurFestgehalten: boolean;
   jedesNte: number;
@@ -85,8 +90,8 @@ interface Verfahren {
   konfidenz: number;
   wert: string | null;
   hinweis: string;
-  /** Nur bei der Spiralenzählung: die Familien zum Nachzeichnen. */
-  roh?: ParastichenRoh | undefined;
+  /** Nur bei der Spiralenzählung: die gezählten Ketten zum Nachzeichnen. */
+  roh?: KettenRoh | undefined;
   /** Einzelmessungen der laufenden Messreihe. Leer, solange keine läuft. */
   proben: Reihenprobe[];
   /** Was die abgeschlossene Reihe ergeben hat. Null im laufenden Betrieb. */
@@ -102,7 +107,7 @@ interface Verfahren {
 interface Reihenprobe {
   probe: Probe;
   ergebnis: Result;
-  roh?: ParastichenRoh | undefined;
+  roh?: KettenRoh | undefined;
 }
 
 /** Der festgehaltene Befund eines Verfahrens. */
@@ -112,7 +117,7 @@ interface Festbefund {
   zahl: number;
   deutung: string;
   treffer: boolean;
-  reihe: { proben: number; traeger: number; spanne: number };
+  reihe: { proben: number; traeger: number; spanne: number; zusammen?: boolean };
 }
 
 const verfahren: Verfahren[] = [
@@ -131,7 +136,7 @@ const verfahren: Verfahren[] = [
     fest: null,
   },
   {
-    metrik: createParastichenMetric(),
+    metrik: createKettenMetric(),
     stetig: false,
     spezifisch: true,
     nurFestgehalten: true,
@@ -189,15 +194,15 @@ const MESSKANTE = 512;
  * Wie viele Bilder einer Reihe die Spiralenzählung auswertet, und in welchem
  * Abstand sie aufgenommen werden.
  *
- * Nicht jedes Bild: Das erste kostet eine volle Mittelsuche (60 bis 90
- * Messungen), jedes weitere einen kurzen Aufstieg von der Mitte des vorigen
- * aus (etwa 25). Sechs Bilder sind am Entwicklungsrechner gut eine Sekunde,
- * am Telefon geschätzt drei -- länger wartet niemand gern. Der Abstand von
- * 350 ms verteilt sie über die ganze Reihe, damit sie nicht alle dasselbe
- * Zittern einfangen.
+ * Nicht jedes Bild: Die Kettenzählung baut je Bild dreißig Blütchengitter
+ * und kostet am Entwicklungsrechner 0,7 Sekunden, das erste Bild dazu eine
+ * volle Mittelsuche (0,5 s). Drei Bilder sind dort gut zwei Sekunden, am
+ * Telefon geschätzt fünf bis sieben -- länger wartet niemand gern. Der
+ * Abstand von 700 ms verteilt sie über die ganze Reihe, damit sie nicht alle
+ * dasselbe Zittern einfangen.
  */
-const SPIRALBILDER = 6;
-const SPIRALBILD_ABSTAND = 350;
+const SPIRALBILDER = 3;
+const SPIRALBILD_ABSTAND = 700;
 
 let spiralbilder: Frame[] = [];
 let letzteSpiralaufnahme = 0;
@@ -238,8 +243,8 @@ const nachzeichner = createNachzeichner(frag<SVGSVGElement>('#nachzeichnung'));
 // Der Zielring zeigt den Messring der Spiralenzählung. Seine Radien kommen aus
 // denselben Einstellungen wie die Rechnung -- ein Ring, der woanders liegt als
 // die Messung, wäre schlimmer als keiner.
-frag<SVGCircleElement>('#zielring-innen').setAttribute('r', String(LOGPOLAR_STANDARD.innen * 50));
-frag<SVGCircleElement>('#zielring-aussen').setAttribute('r', String(LOGPOLAR_STANDARD.aussen * 50));
+frag<SVGCircleElement>('#zielring-innen').setAttribute('r', String(KETTEN_RING.innen * 50));
+frag<SVGCircleElement>('#zielring-aussen').setAttribute('r', String(KETTEN_RING.aussen * 50));
 
 // Die Erklaerungen stehen in den Verfahren selbst; die Anzeige kennt keines.
 erklaerungenAufbauen(
@@ -507,15 +512,22 @@ function schleife(jetzt: number): void {
   }
 }
 
-/** Nachgezeichnet wird nur, was auch gefunden wurde. */
+/**
+ * Nachgezeichnet wird nur, was auch gezählt wurde: die Ketten selbst.
+ *
+ * Schon ab geringem Vertrauen, nicht erst ab gutem -- anders als früher bei
+ * den Fourierspiralen. Dort war die Zeichnung eine Behauptung über das Bild;
+ * hier ist sie der Beleg der Zählung. Wer „≈ 35/55" liest, soll sehen können,
+ * welche Blütchen verbunden wurden, und selbst urteilen. Golden werden die
+ * Ketten nur bei einem exakt gezählten Fibonacci-Paar.
+ */
 function nachzeichnungPflegen(): void {
   const spirale = verfahren.find((v) => !v.stetig);
-  if (spirale && spirale.konfidenz >= VERTRAUEN_GUT && spirale.roh) {
-    nachzeichner.spiralen(
-      spirale.roh.familien,
-      (spirale.ergebnis?.detail['treffer'] ?? 0) === 1,
-      LOGPOLAR_STANDARD,
-      { x: spirale.roh.mitte.x / MESSKANTE, y: spirale.roh.mitte.y / MESSKANTE },
+  if (spirale && spirale.konfidenz >= VERTRAUEN_GERING && spirale.roh && spirale.roh.segmente.length > 0) {
+    nachzeichner.ketten(
+      spirale.roh.segmente,
+      spirale.konfidenz >= VERTRAUEN_GUT && spirale.roh.treffer,
+      MESSKANTE,
     );
   } else {
     nachzeichner.loeschen();
@@ -610,9 +622,9 @@ function reiheAbschliessen(dauer: number): void {
   zustandSetzen('auswertung');
   befundeZeigen(zustandText(true, 0), letzteHelligkeit, stabilitaet.report);
 
-  void spiralenZaehlen(bilder, nummer).then((fertig) => {
-    if (!fertig || nummer !== auswertungsNummer) return;
-    for (const v of verfahren) if (v.nurFestgehalten) festhalten(v);
+  void spiralenZaehlen(bilder, nummer).then((roh) => {
+    if (!roh || nummer !== auswertungsNummer) return;
+    for (const v of verfahren) if (v.nurFestgehalten) festhaltenZusammen(v, roh);
     zustandSetzen('fest');
     nachzeichnungPflegen();
     befundeZeigen(zustandText(true, 0), letzteHelligkeit, stabilitaet.report);
@@ -625,43 +637,67 @@ function atemzug(): Promise<void> {
 }
 
 /**
- * Zählt die Spiralen an den beiseitegelegten Bildern einer Reihe.
+ * Zählt die Spiralen an den beiseitegelegten Bildern einer Reihe -- und zwar
+ * gemeinsam, nicht Bild für Bild.
+ *
+ * Jedes Bild liefert nur Stimmen: je Ring die Zählungen aller Gitter. Erst am
+ * Ende wird über alle Stimmen aller Bilder zugleich entschieden. Das
+ * verdreifacht die Stütze genau dort, wo es an Genauigkeit fehlt; drei
+ * getrennte ungefähre Zählungen, über die man abstimmt, wären schwächer.
  *
  * Das erste Bild bekommt die volle Mittelsuche. Jedes weitere beginnt dort,
- * wo das vorige die Mitte gefunden hat -- die Hand hat sich in 350 ms nur um
+ * wo das vorige die Mitte gefunden hat -- die Hand hat sich in 700 ms nur um
  * wenige Pixel bewegt, und ein kurzer Aufstieg genügt. Zwischen zwei Bildern
  * gibt die Schleife den Takt ab, sonst stünde die Anzeige still, bis alles
  * fertig ist.
  *
- * Gibt `false` zurück, wenn die Auswertung überholt wurde.
+ * Gibt die gemeinsame Zählung zurück, oder `null`, wenn die Auswertung
+ * überholt wurde.
  */
-async function spiralenZaehlen(bilder: readonly Frame[], nummer: number): Promise<boolean> {
-  const v = verfahren.find((w) => w.nurFestgehalten);
-  if (!v) return true;
-  v.proben.length = 0;
-
+async function spiralenZaehlen(bilder: readonly Frame[], nummer: number): Promise<KettenRoh | null> {
+  const stimmen: Stimmen[] = [];
   let start: { x: number; y: number } | undefined;
   for (const [i, bild] of bilder.entries()) {
     auswertungsStand = `Bild ${i + 1} von ${bilder.length}`;
     befundeZeigen(zustandText(true, 0), letzteHelligkeit, stabilitaet.report);
     await atemzug();
-    if (nummer !== auswertungsNummer) return false;
+    if (nummer !== auswertungsNummer) return null;
 
-    const roh = sucheMitte(bild, undefined, start);
-    start = roh.mitte;
-    const ergebnis = parastichenErgebnis(roh);
-    const konfidenz = v.metrik.confidence(ergebnis);
-    v.proben.push({
-      probe: {
-        wert: ergebnis.value,
-        marke: konfidenz >= VERTRAUEN_GERING ? wertText(ergebnis) : null,
-        konfidenz,
-      },
-      ergebnis,
-      roh,
-    });
+    const { mitte } = sucheMitte(bild, undefined, start);
+    start = mitte;
+    stimmen.push(kettenStimmen(bild, mitte.x, mitte.y));
   }
-  return true;
+  return entscheide(stimmen);
+}
+
+/**
+ * Stellt den Befund der Spiralenzählung still.
+ *
+ * Anders als bei der fraktalen Dimension gibt es hier keine Einzelbefunde,
+ * über die abgestimmt würde -- die Bilder wurden zusammengezählt. Unter dem
+ * Wert steht deshalb nicht „einig in X von Y", sondern aus wie vielen Bildern
+ * die Zählung stammt.
+ */
+function festhaltenZusammen(v: Verfahren, roh: KettenRoh): void {
+  const ergebnis = kettenErgebnis(roh);
+  const konfidenz = v.metrik.confidence(ergebnis);
+  const wert = konfidenz >= VERTRAUEN_GERING && ergebnis.label ? ergebnis.label : null;
+  v.ergebnis = ergebnis;
+  v.roh = roh;
+  v.konfidenz = wert === null ? 0 : konfidenz;
+  v.wert = wert;
+  v.hinweis =
+    roh.bilder === 0
+      ? 'keine Messung zustande gekommen – Belichtung war unruhig'
+      : (ergebnis.caveats[0] ?? '');
+  v.fest = {
+    wert,
+    zahl: ergebnis.value,
+    deutung: wert === null ? '' : (ergebnis.deutung ?? ''),
+    treffer: (ergebnis.detail['treffer'] ?? 0) === 1,
+    reihe: { proben: roh.bilder, traeger: roh.bilder, spanne: 0, zusammen: true },
+  };
+  v.proben.length = 0;
 }
 
 /**

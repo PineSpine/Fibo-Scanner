@@ -22,7 +22,7 @@ export interface Befund {
    * die 41 von 58 Bildern getragen haben, ist etwas anderes als dieselbe Zahl
    * aus 6 von 58 -- und wer eine Messung festhält, will genau das wissen.
    */
-  reihe?: { proben: number; traeger: number; spanne: number } | undefined;
+  reihe?: { proben: number; traeger: number; spanne: number; zusammen?: boolean } | undefined;
 }
 
 export interface AnzeigeZustand {
@@ -82,13 +82,19 @@ const DETAIL_NAMEN: Readonly<Record<string, string>> = {
   schaerfeRechts: 'Gipfelschärfe, andere',
   treffer: 'Fibonacci-Paar',
   versatz: 'Blütenmitte neben Bildmitte, Pixel',
+  klein: 'Spiralen, weniger',
+  gross: 'Spiralen, mehr',
+  exakt: 'exakt gezählt',
+  genauigkeit: 'Genauigkeit ±',
+  stuetze: 'Gitter, die zählen',
+  ringe: 'Ringe mit Zählung',
 };
 
 /** Zwischenwerte, die niemandem etwas sagen, bleiben aus dem Protokoll heraus. */
 const DETAIL_VERBORGEN = new Set(['side', 'gesucht']);
 
 function detailWert(schluessel: string, wert: number): string {
-  if (schluessel === 'treffer') return wert === 1 ? 'ja' : 'nein';
+  if (schluessel === 'treffer' || schluessel === 'exakt') return wert === 1 ? 'ja' : 'nein';
   if (schluessel === 'density') return `${zahl(wert * 100, 1)} %`;
   if (Number.isInteger(wert)) return String(wert);
   return zahl(wert, wert < 10 ? 3 : 1);
@@ -118,7 +124,13 @@ function vertrauenstext(b: Befund): string {
 
   const teile = [`Vertrauen ${Math.round(b.konfidenz * 100)} %`];
   if (b.reihe) {
-    teile.push(`einig in ${b.reihe.traeger} von ${b.reihe.proben} Messungen`);
+    // Zusammengezählt heißt: Die Bilder haben gemeinsam gezählt, nicht jedes
+    // für sich -- "einig in 3 von 3" wäre dann eine leere Behauptung.
+    teile.push(
+      b.reihe.zusammen
+        ? `aus ${b.reihe.proben} Bildern zusammengezählt`
+        : `einig in ${b.reihe.traeger} von ${b.reihe.proben} Messungen`,
+    );
     // Eine Spanne von null heißt nicht "sehr genau", sondern "hier gibt es
     // keine Spanne" -- eine Abstimmung über ganze Zahlen hat keine.
     if (b.reihe.spanne > 0) teile.push(`Spanne ${zahl(b.reihe.spanne, 3)}`);

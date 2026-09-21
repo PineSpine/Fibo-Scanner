@@ -14,6 +14,18 @@ export interface Nachzeichner {
      */
     mitte: { x: number; y: number },
   ): void;
+  /**
+   * Die gezählten Ketten ins Bild legen: jede Verbindung zwischen zwei
+   * Blütchen, die in die Zählung eingegangen ist. Keine Näherung und keine
+   * Kurve, sondern genau das, was gezählt wurde -- wer der Zahl nicht traut,
+   * sieht nach, ob die Ketten den Reihen folgen.
+   */
+  ketten(
+    segmente: readonly { x1: number; y1: number; x2: number; y2: number; schar: 0 | 1 }[],
+    treffer: boolean,
+    /** Kantenlänge des Messbilds, in dessen Pixeln die Segmente liegen. */
+    messkante: number,
+  ): void;
   /** Nichts gefunden, also nichts zeichnen. */
   loeschen(): void;
 }
@@ -92,6 +104,41 @@ export function createNachzeichner(svg: SVGSVGElement): Nachzeichner {
           svg.append(linie);
         }
       }
+    },
+
+    ketten(segmente, treffer, messkante): void {
+      const form = `ketten:${segmente.length}:${segmente[0]?.x1 ?? 0}:${treffer ? '!' : ''}`;
+      if (form === letzteForm) return;
+      letzteForm = form;
+      svg.textContent = '';
+      if (segmente.length === 0) return;
+
+      // Ein Pfad je Schar statt eines Elements je Verbindung -- bei einer
+      // Sonnenblume sind es über tausend, und das Standbild soll nicht stocken.
+      const faktor = 100 / messkante;
+      const pfade = ['', ''];
+      for (const s of segmente) {
+        pfade[s.schar] +=
+          `M${(s.x1 * faktor).toFixed(2)} ${(s.y1 * faktor).toFixed(2)}` +
+          `L${(s.x2 * faktor).toFixed(2)} ${(s.y2 * faktor).toFixed(2)}`;
+      }
+      pfade.forEach((d, schar) => {
+        if (!d) return;
+        // Erst ein dunkler Hof, dann die Linie darauf -- wie Straßen auf einer
+        // Karte. Ohne Hof verschwand Grünspan auf dunklen Blütchen und
+        // Papierfarbe auf gelben; ein Beleg, den man nicht sieht, belegt nichts.
+        for (const rolle of ['kette-hof', 'kette-linie']) {
+          const linie = document.createElementNS(NS, 'path');
+          linie.setAttribute('d', d);
+          // Die zweite Schar gestrichelt, damit man beide Richtungen
+          // auseinanderhalten kann, ohne eine weitere Farbe einzuführen.
+          linie.setAttribute(
+            'class',
+            `kette ${rolle} ${schar === 1 ? 'kette-zweite' : ''} ${treffer ? 'kette-treffer' : ''}`.trim(),
+          );
+          svg.append(linie);
+        }
+      });
     },
 
     loeschen(): void {

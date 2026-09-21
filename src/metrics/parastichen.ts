@@ -390,6 +390,18 @@ function ramp(a: number, b: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/**
+ * Was Fibonacci-Spiralen sind -- unabhaengig davon, wie die App sie zaehlt.
+ * Beide Zaehlverfahren (Fourier hier, Nachbarketten in ketten.ts) teilen ihn.
+ */
+export const SPIRALEN_PHAENOMEN: readonly string[] = [
+  "Auf einer Sonnenblume, einem Kiefernzapfen oder einem Romanesco sieht man Spiralen — und zwar in zwei Richtungen zugleich, nach links und nach rechts gedreht. Zählt man beide, kommen fast immer benachbarte Zahlen aus derselben Reihe heraus: 21 und 34, oder 34 und 55, oder 55 und 89.",
+  "Diese Reihe heißt Fibonacci-Folge. Jede Zahl darin ist die Summe der beiden davor: 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89.",
+  "Der Grund dafür ist keine Zahlenmagie, sondern Platzmangel. Eine Pflanze setzt ein Blütchen nach dem anderen an und dreht sich dabei jedes Mal um denselben Winkel weiter. Wäre dieser Winkel ein glatter Bruchteil des Vollkreises — ein Drittel etwa —, säße jedes dritte Blütchen genau über dem ersten und nähme ihm das Licht. Der Winkel, bei dem sich am wenigsten überdeckt, liegt bei rund 137,5 Grad. Aus ihm entstehen die Spiralen von selbst, und ihre Anzahlen sind genau die Fibonacci-Zahlen.",
+  "In der Fachsprache heißen die Spiralarme Parastichen.",
+  "Die bekannte Spirale aus ineinandergesetzten Quadraten, das Bild vom Goldenen Schnitt, ist etwas anderes. Sie ist eine einzige Spirale, die mit jeder Vierteldrehung um den Faktor 1,618 wächst — und sie kommt in einer Sonnenblume nicht vor. Dort liegen viele flachere Spiralen in zwei Scharen nebeneinander. Mit dem Goldenen Schnitt hat der Blütenstand trotzdem zu tun: über den Winkel von 137,5 Grad, der den Vollkreis im Goldenen Schnitt teilt, nicht über die Form einer Spirale.",
+];
+
 export function createParastichenMetric(
   optionen: ParastichenOptionen = PARASTICHEN_STANDARD,
 ): Metric {
@@ -399,13 +411,7 @@ export function createParastichenMetric(
     // Fachbegriff steht im Erklaertext, in der Anzeige steht, worum es geht.
     label: 'Fibonacci-Spiralen',
 
-    phaenomen: [
-      "Auf einer Sonnenblume, einem Kiefernzapfen oder einem Romanesco sieht man Spiralen — und zwar in zwei Richtungen zugleich, nach links und nach rechts gedreht. Zählt man beide, kommen fast immer benachbarte Zahlen aus derselben Reihe heraus: 21 und 34, oder 34 und 55, oder 55 und 89.",
-      "Diese Reihe heißt Fibonacci-Folge. Jede Zahl darin ist die Summe der beiden davor: 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89.",
-      "Der Grund dafür ist keine Zahlenmagie, sondern Platzmangel. Eine Pflanze setzt ein Blütchen nach dem anderen an und dreht sich dabei jedes Mal um denselben Winkel weiter. Wäre dieser Winkel ein glatter Bruchteil des Vollkreises — ein Drittel etwa —, säße jedes dritte Blütchen genau über dem ersten und nähme ihm das Licht. Der Winkel, bei dem sich am wenigsten überdeckt, liegt bei rund 137,5 Grad. Aus ihm entstehen die Spiralen von selbst, und ihre Anzahlen sind genau die Fibonacci-Zahlen.",
-      "In der Fachsprache heißen die Spiralarme Parastichen.",
-      "Die bekannte Spirale aus ineinandergesetzten Quadraten, das Bild vom Goldenen Schnitt, ist etwas anderes. Sie ist eine einzige Spirale, die mit jeder Vierteldrehung um den Faktor 1,618 wächst — und sie kommt in einer Sonnenblume nicht vor. Dort liegen viele flachere Spiralen in zwei Scharen nebeneinander. Mit dem Goldenen Schnitt hat der Blütenstand trotzdem zu tun: über den Winkel von 137,5 Grad, der den Vollkreis im Goldenen Schnitt teilt, nicht über die Form einer Spirale.",
-    ],
+    phaenomen: SPIRALEN_PHAENOMEN,
 
     verfahren: [
       "Die App rollt das Bild um seine Mitte ab: waagerecht der Winkel, senkrecht der Abstand zur Mitte. In dieser Darstellung wird aus jeder Spirale eine schräge Gerade — und wie oft ein solches Muster den Kreis umrundet, lässt sich abzählen. Genau das ist die Zahl der Spiralarme.",

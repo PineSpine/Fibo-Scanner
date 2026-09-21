@@ -529,6 +529,45 @@ body {
   opacity: 0.9;
 }
 
+/*
+ * Die gezählten Ketten: Verbindungen von Blütchen zu Blütchen, in Papierfarbe
+ * auf einem Hof aus Tinte. Grünspan allein verschwand auf dunklen Blütchen,
+ * Papier allein auf gelben -- mit Hof trägt die Linie auf jedem Grund. Die
+ * zweite Schar ist gestrichelt. Gold nur für ein exakt gezähltes
+ * Fibonacci-Paar.
+ */
+.kette {
+  fill: none;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.kette-hof {
+  stroke: var(--ink);
+  stroke-width: 3.2;
+  opacity: 0.55;
+}
+
+.kette-linie {
+  stroke: var(--paper);
+  stroke-width: 1.4;
+  opacity: 0.95;
+}
+
+.kette-linie.kette-zweite {
+  stroke-dasharray: 3 2.5;
+}
+
+.kette-linie.kette-treffer {
+  stroke: var(--gold);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .kette {
+    animation: spirale-auf 420ms ease-out both;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .spirale {
     animation: spirale-auf 420ms ease-out both;

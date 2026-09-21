@@ -21,12 +21,12 @@ Privatprojekt. Kein Produkt, kein Store, kein Nutzerkonto.
 | Meilenstein | Zustand |
 |---|---|
 | **M1 — Box-Counting** | gebaut, kalibriert, läuft am Gerät |
-| **M4 — Parastichen** | gebaut, mit Mittelsuche; nur beim Festhalten. **An einem echten Foto noch nie gefunden** |
+| **M4 — Spiralen** | Kettenzählung (Blütchen → Nachbarn → Kreuzungen), nur beim Festhalten. Gerechnet exakt; **echte Fotos nur ungefähr** („≈ 34/55"), kein Urteil |
 | M2 — Spektralsteigung | offen (die FFT dafür steht bereits in `metrics/fft.ts`) |
 | M3 — Rotationssymmetrie | offen (Log-Polar steht bereits in `metrics/logPolar.ts`) |
 | M5 — Packung / Voronoi | offen |
 
-99 Tests, 12 Dateien. `npm test` muss grün sein, bevor irgendetwas gepusht wird —
+117 Tests, 13 Dateien. `npm test` muss grün sein, bevor irgendetwas gepusht wird —
 der Workflow bricht sonst ab und veröffentlicht nicht.
 
 **Der Feldtest hat den entscheidenden Mangel gezeigt:** Beide Verfahren werten
@@ -143,7 +143,9 @@ testen; das ist der Ersatz. Erwartet: alle Pixel innerhalb von 1 von 255.
 Weitere Prüfskripte ohne festen Sollwert, zum Nachsehen beim Kalibrieren:
 `gemeinsam-probe.ts` (beide Verfahren auf allen Motiven, plus Rechenzeit),
 `spektrum-probe.ts` (Log-Polar-Spektren im Vergleich), `parastichen-probe.ts`,
-`mittelsuche-probe.ts` (Mittelsuche auf allen Motiven, mit Rechenzeit).
+`mittelsuche-probe.ts` (Mittelsuche auf allen Motiven, mit Rechenzeit),
+`ketten-probe.ts` (Kettenzählung: gerechnet, Fremdmotive, echte Blütenstände —
+diese nur, wenn lokal vorhanden, siehe unten; `lang` zeigt jeden Ring).
 
 ### Aufs Telefon
 
@@ -172,7 +174,8 @@ src/
                pipeline.ts      zwei Durchgänge, asynchroner Rückweg über PBO
   metrics/     types.ts         Frame, Result, Skala, Metric
                boxCounting.ts   M1
-               parastichen.ts   M4
+               ketten.ts        M4: Blütchen, Nachbarketten, Kreuzungen zählen
+               parastichen.ts   Mittelsuche (und die alte Fourierzählung, nur noch geprüft)
                fft.ts           Radix-2, iterativ — für M4, später M2
                logPolar.ts      Abrollen um die Mitte — für M4, später M3
                sobel.ts         CPU-Referenz, Vorlage für den Shader
@@ -188,7 +191,8 @@ test/fixtures/ images.ts        Sierpinski, Koch, Rauschen, leer
                scenes.ts        Wand, Backstein, fBm, Verzweigungsbaum, Weichzeichner
                phyllotaxis.ts   Blütenstände nach Vogel
                stoerung.ts      verschieben, verrauschen — wie draußen
-test/fotos/                     echte Fotos, eingecheckt (fixtures/*.png sind erzeugt und ignoriert)
+test/fotos/                     eigene Fotos, eingecheckt (fixtures/*.png sind erzeugt und ignoriert)
+test/test_messungen/            fremde Bilder und Bildschirmfotos -- IGNORIERT, nie einchecken
 scripts/       png.ts           gemeinsamer PNG-Leser und -Schreiber
 ```
 
@@ -243,8 +247,10 @@ sagen, was im Bild steckt, nicht fragen, wonach man suchen will.
 - Ein Wechsel des Hauptbefundes braucht 0,15 Vorsprung, sonst springt die
   Überschrift bei jedem Bild.
 - `nurFestgehalten`: Die Spiralenzählung rechnet **nicht live**. Während einer
-  Reihe legt die Schleife sechs Bilder im Abstand von 350 ms beiseite; gezählt
-  wird nach dem Festhalten, mit Mittelsuche, in Häppchen, damit die Anzeige
+  Reihe legt die Schleife drei Bilder im Abstand von 700 ms beiseite; nach dem
+  Festhalten sammelt jedes Bild Stimmen (Mittelsuche, dreißig Gitter, gut eine
+  Sekunde je Bild am Entwicklungsrechner), und dann wird über alle zugleich
+  entschieden (`kettenStimmen` → `entscheide`). In Häppchen, damit die Anzeige
   nicht stillsteht (Zustand `auswertung`). Live steht in ihrer Zeile nur die
   Anleitung.
 - **Während einer Messreihe rechnet jedes Verfahren bei jedem Bild.** Die
@@ -351,6 +357,73 @@ gilt deshalb Gipfelhöhe ab **60** statt 30, gemessen mit
 **Noch nicht gemessen, nur überschlagen:** Neigung. Schräg gehalten wird der
 Kreis zur Ellipse, mit ähnlicher Wirkung wie ein falscher Mittelpunkt. 21/34
 verträgt nach der Überschlagsrechnung 15 bis 20 Grad, 55/89 eher ±10.
+
+### Die Fouriertransformation zählt an echten Blüten nicht
+
+Zweiter Feldtest (Bildschirmfotos) und danach die **Originalbilder** selbst,
+formatfüllend zugeschnitten, mit Mittelsuche:
+
+| Bild | Fourier | vermutlich richtig |
+|---|---|---|
+| Sonnenblume, markiert | 55/85, Gipfel 13 | 55/89 |
+| Sonnenblume, nah | 29/55, Gipfel 24 | 34/55 |
+| Sonnenblume, Abend | 40/60, Gipfel 18 | 34/55 |
+| Zapfen, grau | 8/12, Gipfel 40 | 8/13 |
+| Zapfen, rot | 8/11, Gipfel 28 | 8/13 |
+
+Die Zahlen liegen in der richtigen Gegend, aber eins bis vier daneben, und kein
+Gipfel erreicht die 60. Ausgeschlossen als Ursache: Neigung (Ellipsensuche,
+Achsenverhältnis 0,98–1,0, kein Gewinn), Beleuchtung (Kontrastnormierung, kein
+Gewinn), Bildschirm-Moiré (Originale genauso). Übrig bleibt: Echte
+Blütenstände sind unregelmäßig — Spiralen enden, spalten sich, wechseln die Zahl
+mit dem Radius —, und ein globales Spektrum über einen breiten Ring verschmiert
+das. Schmale Ringe zeigen die Abfolge (13/21 → 21/34 → 36/55), aber schwach.
+
+### Die Kettenzählung
+
+`metrics/ketten.ts` zählt wie ein Botaniker: Blütchen finden (Differenz zweier
+Weichzeichnungen, jede Größe und Helligkeit ein eigenes Gitter), jedes mit dem
+nächsten Nachbarn weiter außen verbinden, links- und rechtsdrehend, und für
+Kreise um die Mitte zählen, wie viele Verbindungen jeder Schar sie kreuzen.
+Fehlende und doppelte Blütchen gleicht die Lückengröße aus. Je Ring stimmen alle
+Gitter ab, die dort regelmäßig zählen (`REGELMAESSIG_AB` 0,6); der Ring nimmt
+den Median.
+
+**Exakt** nur, wenn zwei benachbarte Ringe genau dasselbe Paar zählen und sich
+in jedem die Mehrheit der Gitter einig ist. Nur dann ein Fibonacci-Urteil und
+Gold. Sonst **ungefähr**: „≈ 35/55", Vertrauen fest unter 0,5
+(`UNGEFAEHR_HOECHSTENS`), mit „auf ±3 genau – zu ungenau für eine
+Fibonacci-Aussage". Ein ungefähres Paar wird nie golden.
+
+| Motiv | Kettenzählung, drei Bilder zusammen |
+|---|---|
+| gerechnete Blütenstände, verrauscht, versetzt | **exakt**, samt Abfolge 5/8 → 8/13 → 13/21 → 21/34 → 34/55 → 55/89 |
+| Backsteinwand, Wand, Baum, fraktale Fläche, Rauschen, Dahlie, Zinnie | nichts |
+| Sonnenblume, Abend | ≈ 34/55 |
+| Sonnenblume, nah | ≈ 22/34 (innen; außen ≈ 35/55) |
+| Sonnenblume, markiert | ≈ 59/88 |
+| Zapfen, grau | ≈ 8/12 |
+| Zapfen, rot | nichts |
+
+**Warum nicht exakt an echten Blüten:** Die Gitter sind sich an einem Ring nur
+zu 10 bis 40 % einig — nicht jedes Gitter findet jedes Blütchen. Die kleinere
+der beiden Zahlen liegt meist zu hoch: Die dritte, gleichsinnig drehende Schar
+(bei 34/55 die 89er) mischt sich ein.
+
+**Zusammenzählen über drei Bilder** verdreifacht die Stütze und rückt die
+Mediane näher an die Wahrheit. **Die Mindestzahlen an Gittern wachsen mit der
+Zahl der Bilder** — ohne das meldeten fraktale Fläche „≈ 10/13" und
+Backsteinwand „≈ 24/26", und ein Zapfen stand als exakt „7/10 – kein
+Fibonacci-Paar" da.
+
+**Versucht und verworfen:** Verbindungen nach der typischen Richtung der Schar
+wählen statt nach der Länge. Half an einer Sonnenblume (erstmals exakt 34/55),
+schadete insgesamt: An den Übergängen wechselt die Richtung, gerechnete
+Blütenstände verloren ein Drittel ihrer Stütze, ein Zapfen fiel heraus. Ebenso
+strengere Regelmäßigkeit (0,75/0,85): kaum mehr Einigkeit, viel weniger Stütze.
+
+Die Mitte kommt weiter aus `sucheMitte()`: Dort leistet die Fouriertransformation,
+was sie soll.
 
 ### Bildunruhe
 
@@ -475,11 +548,20 @@ Warum so umständlich: siehe [Fallstricke](#fallstricke).
   — und den zweiten übersah man verlässlich. Über dem Bild steht jetzt nur, was
   mit dem Bild selbst nicht stimmt („Belichtung pendelt sich ein", „Zu dunkel");
   ist alles in Ordnung, bleibt es frei.*
-- **Über dem Bild liegt die Nachzeichnung**, und nur sie: die gefundenen
-  Spiralarme dort, wo sie gemessen wurden. Findet ein Verfahren nichts, wird
-  nichts gezeichnet — eine Linie ohne Befund wäre eine Behauptung. Der Knopf
-  „Kanten zeigen" legt die gezählten Kantenpixel in Grünspan darüber, mit
-  demselben Otsu-Schwellwert, mit dem gezählt wurde.
+- **Über dem Bild liegt die Nachzeichnung**, und nur sie: die gezählten
+  Ketten, Verbindung für Verbindung, dort, wo gezählt wurde. Findet ein
+  Verfahren nichts, wird nichts gezeichnet — eine Linie ohne Befund wäre eine
+  Behauptung. Der Knopf „Kanten zeigen" legt die gezählten Kantenpixel in
+  Grünspan darüber, mit demselben Otsu-Schwellwert, mit dem gezählt wurde.
+  *Die Ketten erscheinen schon bei geringem Vertrauen, nicht erst bei gutem:
+  Sie sind der Beleg der Zählung, nicht eine Behauptung über das Bild. Wer
+  „≈ 35/55" liest, soll sehen, welche Blütchen verbunden wurden. Papierfarbe auf
+  einem Hof aus Tinte, zweite Schar gestrichelt — Grünspan allein verschwand auf
+  dunklen Blütchen. Golden nur bei einem exakten Fibonacci-Paar.*
+- **Ungefähr steht als ungefähr da.** „≈ 35/55" mit Tilde, darunter „auf ±3
+  genau – zu ungenau für eine Fibonacci-Aussage" und „aus 3 Bildern
+  zusammengezählt" (nicht „einig in 3 von 3" — es gab keine drei Zählungen,
+  die sich einig sein könnten).
 - **Jede Zahl bekommt eine Einordnung.** Drei Wörter („stark verzweigt") und, wo
   es eine feste Spanne gibt, eine kleine Achse mit Marke: Linie 1,0 links,
   Fläche 2,0 rechts. Eine nackte Zahl beantwortet nicht, ob sie viel ist.
@@ -633,6 +715,20 @@ die UI geht: gegen alle Fremdmotive prüfen, nicht nur gegen die eigenen
 Referenzbilder.** Der gefährlichere Fehler ist nie, etwas zu übersehen, sondern
 etwas zu behaupten.
 
+**Fremde Bilder im öffentlichen Repository.** Zum Prüfen der Spiralenzählung
+dienten Bilder aus dem Netz, teils von Stockseiten mit Wasserzeichen. Sie und
+alles daraus Abgeleitete (Zuschnitte in `test/test_messungen/3/zuschnitt/`)
+liegen in `test/test_messungen/`, das in der `.gitignore` steht, und dürfen
+**unter keinen Umständen** eingecheckt werden. Tests im Repository verwenden
+nur gerechnete Bilder und eigene Fotos (`test/fotos/`); `ketten-probe.ts` liest
+die fremden Bilder nur, wenn sie lokal da sind. Vor jedem Commit:
+`git status --short --ignored | grep test_messungen` muss `!!` zeigen.
+
+**Schwellen, die für ein Bild bemessen sind, beim Zusammenlegen mitwachsen
+lassen.** „Mindestens drei Gitter je Ring" hieß über drei Bilder: ein
+zufälliges Gitter je Bild — und schon standen Zahlen auf einer fraktalen Fläche
+und ein falsches exaktes „7/10" auf einem Zapfen.
+
 **Nur am Idealfall kalibriert.** Die Spiralenzählung bestand jede Prüfung —
 gegen Blütenstände, die exakt in der Bildmitte lagen. Die naheliegendste
 Störung im Feld, eine Blüte knapp daneben, hat niemand ausprobiert; vier Pixel
@@ -675,35 +771,36 @@ Skript in den Scratchpad schreiben und von dort ausführen.
 erbt, macht die App nicht besser. Die Reihenfolge steht so, weil jeder Schritt
 den nächsten beurteilbar macht:
 
-1. **M4 am echten Blütenstand prüfen — jetzt mit Mittelsuche.** Sonnenblume,
-   Kiefernzapfen von unten, Sonnenhut, Romanesco, Hauswurz. Blütenmitte ungefähr
-   ins Kreuz, Blütenstand füllt den Ring, festhalten. Abzulesen im Messprotokoll:
-   Gipfelschärfe (ab 60 zählt es, ab 90 ist es sicher) und „Blütenmitte neben
-   Bildmitte". **Erreicht auch damit kein echtes Foto 60, wird M4 als
-   experimentell gekennzeichnet oder herausgenommen** — statt weiter an
-   Schwellen zu drehen. Die Nachzeichnung ist dabei der Beleg: Folgen die Linien
-   den Gassen zwischen den Blütchen, stimmt die Zählung.
-2. **Neigung messen (M4).** Gerechnete Blütenstände gestaucht (Ellipse statt
-   Kreis) durch die Kette schicken, wie bei der Verschiebung. Zeigt sich, dass
-   schon 10 Grad genügen, braucht die Suche eine Achse mehr.
-3. **Spektren mitteln statt Ergebnisse (M4).** Über die Bilder einer Reihe den
-   Betrag `|F(m,k)|` mitteln und *danach* den Gipfel suchen — jetzt, da jedes
-   Bild seine eigene Mitte hat, geht das. Findet Spiralen, die in keinem
-   Einzelbild deutlich genug sind.
-4. **Otsu-Schwelle über die Reihe stabilisieren (M1).** Der Schnitt springt von
+1. **Kettenzählung am Telefon prüfen.** Echte Sonnenblume oder Zapfen, Mitte
+   ungefähr ins Kreuz, festhalten. Abzulesen: steht „≈ …" oder eine exakte Zahl,
+   und folgen die gezeichneten Ketten den Reihen der Blütchen? Dazu die
+   Rechenzeit am Gerät — geschätzt fünf bis sieben Sekunden für drei Bilder,
+   gemessen ist das nicht. Eigene Fotos davon gehören als Testbilder nach
+   `test/fotos/`; fremde Bilder nie.
+2. **Die dritte Schar heraushalten (M4).** Die kleinere Zahl liegt an echten
+   Blüten meist zwei, drei zu hoch. Die Richtungsregel je Ringband ist daran
+   gescheitert, dass die Richtung an den Übergängen wechselt. Aussichtsreicher:
+   die Richtung aus den *eigenen* Nachbarn jedes Blütchens bestimmen (lokales
+   Gitter aus den zwei kürzesten Vektoren), statt aus einem ganzen Band.
+3. **Rechenzeit (M4).** Dreißig Gitter je Bild, die meisten zählen nie mit.
+   Aus den Stimmen des ersten Bildes ließe sich ablesen, welche Fleckgrößen
+   überhaupt tragen, und die übrigen Bilder rechnen nur diese.
+4. **Neigung messen (M4).** Gerechnete Blütenstände gestaucht (Ellipse statt
+   Kreis) durch die Kettenzählung schicken, wie bei der Verschiebung.
+5. **Otsu-Schwelle über die Reihe stabilisieren (M1).** Der Schnitt springt von
    Bild zu Bild um Graustufen, und jede Stufe verschiebt die feinste Zählung.
    Der Median der Schwelle über die Reihe, auf alle Bilder der Reihe angewandt,
    nimmt das heraus, ohne die Entscheidung „Otsu statt Perzentil" anzutasten —
    die Dichte wandert weiter mit dem Motiv. **Danach `npm run kalibrierung`,
    die Tabelle muss stehenbleiben.**
-5. **Autofokus sperren.** Wie die Belichtung, mit derselben Vorsicht:
+6. **Autofokus sperren.** Wie die Belichtung, mit derselben Vorsicht:
    `focusMode: 'manual'` mit mitgegebener `focusDistance` und Rückfahrt, wenn
    das Bild dadurch unscharf wird. Er steht seit je an erster Stelle der
    Verdächtigen für die Schwankung von M1.
-6. **M1 abnehmen.** Telefon, Farn, zehn Sekunden ruhig halten, auf die Zeile
+7. **M1 abnehmen.** Telefon, Farn, zehn Sekunden ruhig halten, auf die Zeile
    „Schwankung, 10 s" im Messprotokoll sehen. Unter 0,05 bei vollem Fenster:
    erfüllt.
-7. **M2 — Spektralsteigung.** Die FFT steht. Radial mitteln, Abfall β bestimmen,
+8. **M2 — Spektralsteigung.** Die FFT steht. Radial mitteln, Abfall β bestimmen,
    Anzeige als Zahl mit Einordnung (natürliche Szenen liegen nahe β ≈ 2). Mit
    Referenzbildern und Kalibriertabelle wie bei M1 und M4, und mit derselben
    Gegenprobe: Was meldet es auf Motiven, für die es nicht gedacht ist?
