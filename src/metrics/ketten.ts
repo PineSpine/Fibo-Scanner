@@ -619,7 +619,11 @@ export function kettenErgebnis(roh: KettenRoh): Result {
   const caveats: string[] = [];
   const [klein, gross] = roh.paar ?? [0, 0];
 
-  if (!roh.paar) caveats.push('keine zählbaren Blütchenreihen – Blütenmitte formatfüllend halten');
+  // Früher „Blütenmitte formatfüllend halten" -- beim Feldtest an einer
+  // blühenden Sonnenblume füllte die Scheibe das Bild, und es half nichts: Die
+  // offenen Röhrenblüten sind Borsten, keine Punkte, und die Knospen innen zu
+  // klein und zu dunkel. Der Hinweis nennt jetzt, woran es tatsächlich liegt.
+  if (!roh.paar) caveats.push('keine zählbaren Blütchenreihen – zu fein, zu dunkel oder ohne Reihen');
   else if (!roh.exakt) caveats.push(`auf ±${roh.genauigkeit} genau – zu ungenau für eine Fibonacci-Aussage`);
   else if (!roh.treffer) caveats.push('Spiralen gezählt, aber kein Fibonacci-Paar');
 
@@ -700,7 +704,9 @@ export function createKettenMetric(): Metric {
     explain(r: Result): string {
       const klein = r.detail['klein'] ?? 0;
       const gross = r.detail['gross'] ?? 0;
-      if (gross === 0) return 'Im Bild waren keine zählbaren Blütchenreihen zu finden.';
+      if (gross === 0) {
+        return 'Im Bild waren keine zählbaren Blütchenreihen zu finden. Am ehesten gelingt es an Zapfen und an Blütenständen, deren Blütchen als deutliche Punkte erscheinen – bei Tageslicht und nah genug, dass jedes einzelne zu erkennen ist. Eine Sonnenblume in voller Blüte zeigt außen Borsten statt Punkte.';
+      }
       if ((r.detail['exakt'] ?? 0) !== 1) {
         return `Etwa ${klein} Spiralen in der einen Richtung und ${gross} in der anderen, auf ±${r.detail['genauigkeit'] ?? 0} genau. Für eine Aussage über Fibonacci-Zahlen ist das zu ungenau.`;
       }

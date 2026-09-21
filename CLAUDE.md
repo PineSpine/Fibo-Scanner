@@ -31,7 +31,7 @@ der Workflow bricht sonst ab und veröffentlicht nicht.
 
 ### Übergabe — wo wir stehen (21.09.2026)
 
-Der Code-Stand ist Commit `1ace76a`; spätere Commits änderten nur diese Datei.
+Der Code-Stand ist der jüngste Commit auf `main`.
 Jeder Push baut neu — die Zeile „Stand" im Messprotokoll zeigt die Bauzeit des
 letzten Pushs in UTC, nicht die des Codes. Was seit dem ersten Feldtest geschah, in einem Absatz:
 Messreihe mit Standbild gebaut („Messung festhalten") → M1 damit
@@ -42,10 +42,14 @@ und zählt an echten Blüten trotzdem nicht → ersetzt durch die **Kettenzählu
 zählt und das auch so anzeigt. Unterwegs gefunden und behoben: das Messbild
 stand auf dem Kopf; die Anzeige zeigte Zahlen und Gold ohne Vertrauen.
 
-**Worauf gewartet wird:** der Feldtest der Kettenzählung am Telefon — echte
-Sonnenblume oder Zapfen, festhalten; ablesen, ob „≈ …" oder eine exakte Zahl
-steht, ob die gezeichneten Ketten den Blütchenreihen folgen und wie lange die
-Auswertung dauert. Danach [Nächster Schritt](#nächster-schritt), Punkt 2.
+**Worauf gewartet wird:** der Feldtest der Kettenzählung am Telefon an einem
+*geeigneten* Motiv — Zapfen oder ein Blütenstand mit Blütchen als deutlichen
+Punkten, bei Tageslicht. Der erste Versuch an einer blühenden Sonnenblume
+abends zählte nichts, und das zu Recht (siehe
+[Feldtest der Kettenzählung](#feldtest-der-kettenzählung-21092026)). Ablesen:
+steht „≈ …" oder eine exakte Zahl, folgen die gezeichneten Ketten den
+Blütchenreihen, wie lange dauert die Auswertung. Danach
+[Nächster Schritt](#nächster-schritt), Punkt 2.
 
 **Arbeitsweise, die sich bewährt hat:** Jede Änderung an einem Verfahren erst
 mit dem Prüfskript an allen Motiven messen (`node scripts/ketten-probe.ts lang`,
@@ -451,6 +455,24 @@ strengere Regelmäßigkeit (0,75/0,85): kaum mehr Einigkeit, viel weniger Stütz
 Die Mitte kommt weiter aus `sucheMitte()`: Dort leistet die Fouriertransformation,
 was sie soll.
 
+### Feldtest der Kettenzählung (21.09.2026)
+
+Echte Sonnenblume in voller Blüte, abends in der Wohnung, drei Abstände:
+M1 1,34 bis 1,58, einig in 97 bis 104 von gut 100 Messungen. **Spiralen:
+nichts, an allen drei.** Nachgerechnet an den Standbildern (Zuschnitte nur
+lokal, `test/test_messungen/4/`): nichts, auch mit von Hand gesetzter Mitte
+(die Mittelsuche lag ~30 px daneben — nicht die Ursache), auch am inneren Teil
+der Scheibe in fast doppelter Auflösung. Örtliche Kontrastnormierung erzeugte
+nur Zufallspaare um falsche Mitten — verworfen.
+
+**Ursache ist das Motiv:** Außen sind die Röhrenblüten offen — Borsten, keine
+Punkte; innen die Knospen 3 bis 5 Pixel, dunkelbraun auf Schwarz, von der
+Rauschunterdrückung verwischt. An jedem Ring zählten höchstens ein bis vier
+Gitter regelmäßig. **Die App hat richtig geschwiegen.** Falsch war nur der
+Hinweis „Blütenmitte formatfüllend halten" — die Scheibe füllte das Bild
+bereits. Er heißt jetzt „zu fein, zu dunkel oder ohne Reihen", und die
+Erklärung nennt, welche Motive taugen.
+
 ### Bildunruhe
 
 `calibration/bewegung.ts` misst den mittleren Helligkeitsunterschied zwischen
@@ -820,7 +842,8 @@ Skript in den Scratchpad schreiben und von dort ausführen.
 erbt, macht die App nicht besser. Die Reihenfolge steht so, weil jeder Schritt
 den nächsten beurteilbar macht:
 
-1. **Kettenzählung am Telefon prüfen.** Echte Sonnenblume oder Zapfen, Mitte
+1. **Kettenzählung am Telefon prüfen.** Zapfen oder reifer Samenstand bei
+   Tageslicht (eine blühende Sonnenblume taugt nicht, siehe Feldtest), Mitte
    ungefähr ins Kreuz, festhalten. Abzulesen: steht „≈ …" oder eine exakte Zahl,
    und folgen die gezeichneten Ketten den Reihen der Blütchen? Dazu die
    Rechenzeit am Gerät — geschätzt fünf bis sieben Sekunden für drei Bilder,
